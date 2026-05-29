@@ -1,0 +1,31 @@
+id: shared-budget-example-a
+enabled: false
+market:
+  url: https://polymarket.com/event/example-budget-market/example-budget-market-a
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: http.poll
+  url: https://example.com/api/events
+  method: GET
+  pollMs: 60000
+  eventsPath: $.items[*]
+  dataPath: $
+  eventIdPath: $.id
+  textPath: $.message
+condition:
+  type: textIncludes
+  terms:
+    - first trigger
+order:
+  side: BUY
+  amountUsd: 100
+  maxPrice: 0.8
+  type: FOK
+  once: true
+budget:
+  group: example-shared-budget
+  limitUsd: 250
+  priority: 10
+notifications:
+  telegram: true

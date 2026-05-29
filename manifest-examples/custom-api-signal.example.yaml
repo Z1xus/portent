@@ -1,0 +1,42 @@
+id: custom-api-signal
+enabled: false
+market:
+  url: https://polymarket.com/event/example-api-market/example-api-market-by-date
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: http.poll
+  url: https://example.com/api/events
+  method: GET
+  pollMs: 60000
+  auth:
+    type: bearer
+    tokenEnv: CUSTOM_API_TOKEN
+  eventsPath: $.items[*]
+  dataPath: $
+  eventIdPath: $.id
+  textPath: $.message
+  request:
+    timeoutMs: 10000
+    retry:
+      attempts: 3
+      backoffMs: 1000
+      maxBackoffMs: 10000
+condition:
+  type: all
+  conditions:
+    - type: jsonEquals
+      path: $.status
+      value: released
+    - type: jsonCompare
+      path: $.confidence
+      operator: gte
+      value: 0.95
+order:
+  side: BUY
+  amountUsd: 10
+  maxPrice: 0.75
+  type: FAK
+  once: true
+notifications:
+  telegram: true

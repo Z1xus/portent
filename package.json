@@ -1,0 +1,27 @@
+{
+  "name": "portent",
+  "module": "src/main.ts",
+  "type": "module",
+  "author": "z1xus",
+  "license": "MIT",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run src/cli/check.ts",
+    "simulate": "bun run src/cli/simulate.ts",
+    "auth:derive": "bun run src/cli/auth-derive.ts",
+    "schema": "bun run src/cli/schema.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@polymarket/clob-client-v2": "^1.0.6",
+    "form-data": "^4.0.5",
+    "viem": "^2.51.3",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  }
+}

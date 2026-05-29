@@ -1,0 +1,25 @@
+id: rss-feed-watch
+enabled: false
+market:
+  url: https://polymarket.com/event/example-rss-market/example-rss-market-by-date
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: rss.feed
+  url: https://example.com/feed.xml
+  pollMs: 300000
+  startFromLatest: true
+condition:
+  type: textIncludes
+  terms:
+    - example announcement
+  mode: any
+  caseSensitive: false
+order:
+  side: BUY
+  amountUsd: 10
+  maxPrice: 0.8
+  type: FOK
+  once: true
+notifications:
+  telegram: true

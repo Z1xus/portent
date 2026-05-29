@@ -1,0 +1,1543 @@
+{
+  "title": "PortentManifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "enabled": {
+      "default": false,
+      "type": "boolean"
+    },
+    "market": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "outcome": {
+          "default": "Yes",
+          "type": "string",
+          "minLength": 1
+        },
+        "startAt": {
+          "type": "string"
+        },
+        "stopAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    "markets": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "outcome": {
+            "default": "Yes",
+            "type": "string",
+            "minLength": 1
+          },
+          "startAt": {
+            "type": "string"
+          },
+          "stopAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "outcome"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "marketSelection": {
+      "default": {
+        "mode": "first"
+      },
+      "type": "object",
+      "properties": {
+        "mode": {
+          "default": "first",
+          "type": "string",
+          "enum": [
+            "first",
+            "lowestBestAsk"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "signal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "openai.models"
+            },
+            "pollMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "baseUrl": {
+              "default": "https://api.openai.com/v1/models",
+              "type": "string",
+              "format": "uri"
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "pollMs",
+            "baseUrl",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "x.filteredStream"
+            },
+            "streamUrl": {
+              "default": "https://api.x.com/2/tweets/search/stream",
+              "type": "string",
+              "format": "uri"
+            },
+            "rules": {
+              "minItems": 1,
+              "maxItems": 25,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "value",
+                  "tag"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "reconnectMs": {
+              "default": 15000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "streamIdleMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 300000
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "streamUrl",
+            "rules",
+            "reconnectMs",
+            "streamIdleMs",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "truthsocial.accountStatuses"
+            },
+            "baseUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pollMs": {
+              "default": 30000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "limit": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 40
+            },
+            "excludeReplies": {
+              "default": false,
+              "type": "boolean"
+            },
+            "excludeReblogs": {
+              "default": true,
+              "type": "boolean"
+            },
+            "startFromLatest": {
+              "default": true,
+              "type": "boolean"
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "accountId",
+            "pollMs",
+            "limit",
+            "excludeReplies",
+            "excludeReblogs",
+            "startFromLatest",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "http.poll"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "method": {
+              "default": "GET",
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST"
+              ]
+            },
+            "pollMs": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "bearer"
+                    },
+                    "tokenEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "tokenEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "basic"
+                    },
+                    "usernameEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "passwordEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "usernameEnv",
+                    "passwordEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "valueEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "valueEnv"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "headers": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "headersFromEnv": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "body": {},
+            "eventsPath": {
+              "default": "$",
+              "type": "string",
+              "minLength": 1
+            },
+            "dataPath": {
+              "default": "$",
+              "type": "string",
+              "minLength": 1
+            },
+            "eventIdPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "textPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "startFromLatest": {
+              "default": false,
+              "type": "boolean"
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "method",
+            "pollMs",
+            "headers",
+            "headersFromEnv",
+            "eventsPath",
+            "dataPath",
+            "startFromLatest",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "rss.feed"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "pollMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "bearer"
+                    },
+                    "tokenEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "tokenEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "basic"
+                    },
+                    "usernameEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "passwordEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "usernameEnv",
+                    "passwordEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "valueEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "valueEnv"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "headers": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "headersFromEnv": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "startFromLatest": {
+              "default": true,
+              "type": "boolean"
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "pollMs",
+            "headers",
+            "headersFromEnv",
+            "startFromLatest",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "web.page"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "pollMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "bearer"
+                    },
+                    "tokenEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "tokenEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "basic"
+                    },
+                    "usernameEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "passwordEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "usernameEnv",
+                    "passwordEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "valueEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "valueEnv"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "headers": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "headersFromEnv": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "emit": {
+              "default": "changed",
+              "type": "string",
+              "enum": [
+                "changed",
+                "always"
+              ]
+            },
+            "startFromLatest": {
+              "default": true,
+              "type": "boolean"
+            },
+            "request": {
+              "default": {
+                "timeoutMs": 30000,
+                "retry": {
+                  "attempts": 2,
+                  "backoffMs": 1000,
+                  "maxBackoffMs": 15000
+                }
+              },
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000
+                },
+                "retry": {
+                  "default": {
+                    "attempts": 2,
+                    "backoffMs": 1000,
+                    "maxBackoffMs": 15000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "attempts": {
+                      "default": 2,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "backoffMs": {
+                      "default": 1000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    },
+                    "maxBackoffMs": {
+                      "default": 15000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 300000
+                    }
+                  },
+                  "required": [
+                    "attempts",
+                    "backoffMs",
+                    "maxBackoffMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "timeoutMs",
+                "retry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "pollMs",
+            "headers",
+            "headersFromEnv",
+            "emit",
+            "startFromLatest",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "websocket.json"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "bearer"
+                    },
+                    "tokenEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "tokenEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "basic"
+                    },
+                    "usernameEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "passwordEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "usernameEnv",
+                    "passwordEnv"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "valueEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "valueEnv"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "headers": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "headersFromEnv": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "subscribe": {},
+            "reconnectMs": {
+              "default": 15000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000
+            },
+            "idleMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 300000
+            },
+            "dataPath": {
+              "default": "$",
+              "type": "string",
+              "minLength": 1
+            },
+            "eventIdPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "textPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "headers",
+            "headersFromEnv",
+            "reconnectMs",
+            "idleMs",
+            "dataPath"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "condition": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "order": {
+      "type": "object",
+      "properties": {
+        "side": {
+          "type": "string",
+          "const": "BUY"
+        },
+        "amountUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxPrice": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "FOK",
+            "FAK",
+            "GTC",
+            "GTD"
+          ]
+        },
+        "once": {
+          "default": true,
+          "type": "boolean"
+        },
+        "expiresInSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 31536000
+        },
+        "postOnly": {
+          "default": false,
+          "type": "boolean"
+        },
+        "deferExecution": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "side",
+        "amountUsd",
+        "maxPrice",
+        "type",
+        "once",
+        "postOnly",
+        "deferExecution"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "limitUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "priority": {
+          "default": 100,
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "group",
+        "limitUsd",
+        "priority"
+      ],
+      "additionalProperties": false
+    },
+    "repeat": {
+      "type": "object",
+      "properties": {
+        "cooldownMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 9007199254740991
+        },
+        "maxExecutions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "notifications": {
+      "default": {
+        "telegram": true
+      },
+      "type": "object",
+      "properties": {
+        "telegram": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "telegram"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "enabled",
+    "marketSelection",
+    "signal",
+    "condition",
+    "order",
+    "notifications"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "modelIdPresent"
+                },
+                "modelId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "match": {
+                  "default": "exact",
+                  "type": "string",
+                  "enum": [
+                    "exact",
+                    "includes",
+                    "regex"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "modelId",
+                "match"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "textIncludes"
+                },
+                "terms": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "mode": {
+                  "default": "any",
+                  "type": "string",
+                  "enum": [
+                    "any",
+                    "all"
+                  ]
+                },
+                "caseSensitive": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "terms",
+                "mode",
+                "caseSensitive"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "textMatches"
+                },
+                "pattern": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "flags": {
+                  "default": "iu",
+                  "type": "string",
+                  "pattern": "^[dgimsuvy]*$"
+                }
+              },
+              "required": [
+                "type",
+                "pattern",
+                "flags"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "jsonExists"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "jsonEquals"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "path",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "jsonIncludes"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "path",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "jsonMatches"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "pattern": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "flags": {
+                  "default": "iu",
+                  "type": "string",
+                  "pattern": "^[dgimsuvy]*$"
+                }
+              },
+              "required": [
+                "type",
+                "path",
+                "pattern",
+                "flags"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "jsonCompare"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "gt",
+                    "gte",
+                    "lt",
+                    "lte",
+                    "eq"
+                  ]
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "type",
+                "path",
+                "operator",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "all"
+            },
+            "conditions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema0"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "conditions"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "any"
+            },
+            "conditions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema0"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "conditions"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "not"
+            },
+            "condition": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "required": [
+            "type",
+            "condition"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

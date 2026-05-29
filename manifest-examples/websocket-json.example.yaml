@@ -1,0 +1,29 @@
+id: websocket-json-watch
+enabled: false
+market:
+  url: https://polymarket.com/event/example-stream-market/example-stream-market-by-date
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: websocket.json
+  url: wss://example.com/events
+  subscribe:
+    type: subscribe
+    channel: announcements
+  reconnectMs: 15000
+  idleMs: 300000
+  dataPath: $
+  eventIdPath: $.id
+  textPath: $.message
+condition:
+  type: jsonEquals
+  path: $.status
+  value: released
+order:
+  side: BUY
+  amountUsd: 10
+  maxPrice: 0.8
+  type: FOK
+  once: true
+notifications:
+  telegram: true

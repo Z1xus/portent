@@ -1,0 +1,26 @@
+id: web-page-watch
+enabled: false
+market:
+  url: https://polymarket.com/event/example-web-page-market/example-web-page-market-by-date
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: web.page
+  url: https://example.com/status
+  pollMs: 300000
+  emit: changed
+  startFromLatest: true
+condition:
+  type: textIncludes
+  terms:
+    - example status text
+  mode: any
+  caseSensitive: false
+order:
+  side: BUY
+  amountUsd: 10
+  maxPrice: 0.8
+  type: FOK
+  once: true
+notifications:
+  telegram: true

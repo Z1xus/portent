@@ -1,0 +1,27 @@
+id: model-release-watch
+enabled: false
+market:
+  url: https://polymarket.com/event/example-release-market/example-release-market-by-date
+  outcome: "Yes"
+  stopAt: "2026-12-31T23:59:59Z"
+signal:
+  type: openai.models
+  pollMs: 300000
+  request:
+    timeoutMs: 15000
+    retry:
+      attempts: 2
+      backoffMs: 1000
+      maxBackoffMs: 10000
+condition:
+  type: modelIdPresent
+  modelId: example-model-id
+  match: exact
+order:
+  side: BUY
+  amountUsd: 10
+  maxPrice: 0.9
+  type: FOK
+  once: true
+notifications:
+  telegram: true
