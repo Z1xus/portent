@@ -67,7 +67,7 @@ async function* connect(signal: WebSocketJsonSignal, abortSignal: AbortSignal): 
   ws.addEventListener("message", (message) => {
     resetIdle();
     try {
-      queue.push(eventFromMessage(signal, message.data));
+      queue.push(parseWebSocketJsonMessage(signal, message.data));
     } catch (messageError) {
       error = messageError;
       ws.close(4001, "invalid message");
@@ -109,7 +109,7 @@ async function* connect(signal: WebSocketJsonSignal, abortSignal: AbortSignal): 
   }
 }
 
-function eventFromMessage(signal: WebSocketJsonSignal, data: unknown): SignalEvent {
+export function parseWebSocketJsonMessage(signal: WebSocketJsonSignal, data: unknown): SignalEvent {
   const raw = typeof data === "string" ? data : String(data);
   const parsed = JSON.parse(raw) as unknown;
   const dataValue = firstJsonValue(parsed, signal.dataPath) ?? parsed;

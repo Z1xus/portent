@@ -22,7 +22,7 @@ export async function* streamRssFeed(
         await context.state?.setLastSeen(stateKey, newestId);
       }
     } else {
-      const fresh = lastSeen ? events.filter((event) => event.id !== lastSeen) : events;
+      const fresh = lastSeen ? events.slice(0, events.findIndex((event) => event.id === lastSeen)) : events;
       for (const event of fresh) {
         yield event;
       }
