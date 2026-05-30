@@ -100,7 +100,7 @@ Validate everything, dry-run your manifest, then start:
 
 ```bash
 bun run check                                   # typecheck + validate manifests
-bun run simulate -- manifests/my-strategy.yaml  # dry-run without placing orders
+bun run simulate -- manifests/my-strategy.yaml  # dry-run one manifest (omit path for all enabled)
 bun run start                                   # run for real
 ```
 
