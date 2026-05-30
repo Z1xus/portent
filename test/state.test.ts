@@ -69,6 +69,21 @@ describe("state store", () => {
     firstReservation.release();
   });
 
+  test("commits the actual sized spend, freeing the unused reservation", async () => {
+    const first = manifestWithBudget("budget-a", 20, 30);
+    const second = manifestWithBudget("budget-b", 20, 30);
+    const state = new JsonStateStore(tmpDir);
+    await state.init();
+
+    const firstReservation = state.reserveExecution(first, signalEvent("event-1"));
+    expect(firstReservation.allowed).toBe(true);
+    await firstReservation.commit({ orderId: asOrderId("order-1"), status: "matched", success: true, amountUsd: 5, raw: {} });
+
+    const secondReservation = state.reserveExecution(second, signalEvent("event-2"));
+    expect(secondReservation.allowed).toBe(true);
+    secondReservation.release();
+  });
+
   test("committed shared budget blocks later reservations", async () => {
     const first = manifestWithBudget("budget-a", 20, 30);
     const second = manifestWithBudget("budget-b", 20, 30);

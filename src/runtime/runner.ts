@@ -15,7 +15,7 @@ import {
 import type { Notifier } from "../notifications/telegram.ts";
 import { setLongTimeout, sleep, type LongTimeout } from "../sleep.ts";
 import { streamSignal, type SignalContext, type SignalEvent } from "../signals/index.ts";
-import type { TradingClient } from "../trading/polymarket.ts";
+import { OrderSkippedError, type TradingClient } from "../trading/polymarket.ts";
 import { formatUnknownError } from "../types.ts";
 import type { JsonStateStore } from "./state.ts";
 import type { RuntimeStatusTracker } from "./status.ts";
@@ -172,7 +172,11 @@ async function handleMatchedManifest(
     await safeNotify(options.notifier, { type: "orderSubmitted", manifest, submission });
   } catch (error) {
     reservation.release();
-    await safeNotify(options.notifier, { type: "orderFailed", manifest, error });
+    if (error instanceof OrderSkippedError) {
+      await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: error.message });
+    } else {
+      await safeNotify(options.notifier, { type: "orderFailed", manifest, error });
+    }
   }
 }
 

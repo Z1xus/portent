@@ -222,6 +222,33 @@ budget:
 
 Once spending in a group would exceed its `limitUsd`, further orders in that group are skipped. When several manifests match the same event, `priority` decides order (lower first, ties broken by manifest id).
 
+Optionally add `maxFractionPerExecution` to cap how much a single execution can stake, as a fraction of the group `limitUsd`. With it set, `order.amountUsd` must be at or below `maxFractionPerExecution * limitUsd` or the manifest fails to load. It's a static check against fat-fingering one oversized order into a shared pool.
+
+```yaml
+budget:
+  group: example-basket
+  limitUsd: 1000
+  maxFractionPerExecution: 0.1   # no execution may stake more than $100
+```
+
+## Order sizing
+
+By default `order.amountUsd` is exactly what each order spends. Add an optional `order.sizing` block to treat `amountUsd` as a ceiling instead and size the order to the live book, so a thin book gives you a smaller order rather than one that sweeps the asks to a bad average price.
+
+```yaml
+order:
+  side: BUY
+  amountUsd: 100        # ceiling when sizing is present
+  maxPrice: 0.9
+  type: FOK
+  sizing:
+    mode: bookFraction
+    fraction: 0.5       # spend up to 50% of the depth available at or below maxPrice
+    minUsd: 10          # optional: skip the order if the sized amount falls below this
+```
+
+`bookFraction` spends `fraction` of the dollar depth resting at or below `maxPrice`, capped by `amountUsd`. If the sized amount comes out below `minUsd`, or there's no depth at or below `maxPrice`, the order is skipped for that event and retried on the next, so it can still fill once liquidity improves. While an order is in flight the budget reserves the full `amountUsd` ceiling, then records the actual sized spend once it fills, so a shared group is never over-committed.
+
 ## Conditions
 
 Combine leaf conditions with `all`, `any`, and `not`. They nest.

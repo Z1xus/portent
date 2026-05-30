@@ -40,6 +40,31 @@ describe("manifest schema", () => {
       },
     }, "bad.yaml")).toThrow();
   });
+
+  test("parses optional bookFraction sizing", () => {
+    const manifest = parseManifest({
+      ...baseManifest,
+      order: { ...baseManifest.order, sizing: { mode: "bookFraction", fraction: 0.5, minUsd: 10 } },
+    }, "inline.yaml");
+    expect(manifest.order.sizing).toEqual({ mode: "bookFraction", fraction: 0.5, minUsd: 10 });
+  });
+
+  test("rejects amountUsd above the per-execution budget fraction", () => {
+    expect(() => parseManifest({
+      ...baseManifest,
+      order: { ...baseManifest.order, amountUsd: 50 },
+      budget: { group: "g", limitUsd: 100, maxFractionPerExecution: 0.25 },
+    }, "inline.yaml")).toThrow("maxFractionPerExecution");
+  });
+
+  test("accepts amountUsd within the per-execution budget fraction", () => {
+    const manifest = parseManifest({
+      ...baseManifest,
+      order: { ...baseManifest.order, amountUsd: 25 },
+      budget: { group: "g", limitUsd: 100, maxFractionPerExecution: 0.25 },
+    }, "inline.yaml");
+    expect(manifest.budget?.maxFractionPerExecution).toBe(0.25);
+  });
 });
 
 test("manifest set rejects conflicting budget limits", () => {

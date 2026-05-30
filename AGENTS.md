@@ -97,6 +97,8 @@ See the README for what `budget` does. Invariants to preserve:
 - All manifests in a `budget.group` must declare the same `limitUsd`; `validateManifestSet()` enforces this.
 - `priority` controls same-event ordering only (lower first, ties by manifest id). It is claim order, not an optimizer.
 - Budget usage is recorded in `.portent/state.json`, so restarts preserve spent budget.
+- `budget.maxFractionPerExecution` caps one execution's `order.amountUsd` to that fraction of `limitUsd`. It relates two fields of a single manifest, so it is validated in the `ManifestSchema` `superRefine`, not `validateManifestSet()`.
+- Reservations reserve the full `order.amountUsd` ceiling while an order is in flight; `commit()` records the actual spend from `OrderSubmission.amountUsd`. Reserve the ceiling, record the truth, so a group is never over-committed.
 
 ## Runtime Flow
 
@@ -228,6 +230,8 @@ Every order goes through preflight:
 `assertPricePreflight()` protects `maxPrice`. Keep price checks in trading, not in the runtime.
 
 The runtime submits one order per manifest execution. Do not make `TradingClient.submitOrder()` secretly split an order.
+
+Optional `order.sizing` (`bookFraction`) scales the order down to the live book: `resolveOrderAmountUsd()` is pure and spends `fraction` of the dollar depth at or below `maxPrice`, capped by `order.amountUsd`. `submitOrder()` reports the spent amount in `OrderSubmission.amountUsd`. When the sized amount is below `sizing.minUsd` or there is no eligible depth, it throws `OrderSkippedError`; the runtime releases the reservation and skips without recording an execution, so the event retries when liquidity improves. Keep book reads and the depth/price math in trading, not the runtime.
 
 ## Notifications
 

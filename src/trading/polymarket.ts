@@ -28,13 +28,22 @@ export interface OrderPreflight {
   readonly tickSize: TickSize;
   readonly negRisk: boolean;
   readonly bestAsk?: number;
+  readonly depthUsdAtMaxPrice?: number;
 }
 
 export interface OrderSubmission {
   readonly orderId?: OrderId;
   readonly status: string;
   readonly success: boolean;
+  readonly amountUsd?: number;
   readonly raw: unknown;
+}
+
+export class OrderSkippedError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "OrderSkippedError";
+  }
 }
 
 export interface OrderProbeResult {
@@ -125,7 +134,7 @@ export class PolymarketTradingClient implements TradingClient {
       tokenId: target.tokenId,
       tickSize,
       negRisk,
-      ...(await this.bestAskIfImmediate(target, manifest)),
+      ...(await this.bookMetrics(target, manifest)),
     };
     return preflight;
   }
@@ -133,8 +142,9 @@ export class PolymarketTradingClient implements TradingClient {
   public async submitOrder(manifest: Manifest, target: MarketTarget, event: SignalEvent): Promise<OrderSubmission> {
     const preflight = await this.resolvePreflight(target, manifest);
     assertPricePreflight(manifest, preflight);
-    const response = await this.postOrder(manifest, target, preflight, event);
-    return normalizeOrderResponse(response);
+    const amountUsd = resolveOrderAmountUsd(manifest, preflight);
+    const response = await this.postOrder(manifest, target, preflight, event, amountUsd);
+    return normalizeOrderResponse(response, amountUsd);
   }
 
   public async heartbeat(): Promise<void> {
@@ -169,10 +179,13 @@ export class PolymarketTradingClient implements TradingClient {
     }
   }
 
-  private async bestAskIfImmediate(target: MarketTarget, _manifest: Manifest): Promise<{ readonly bestAsk?: number }> {
+  private async bookMetrics(target: MarketTarget, manifest: Manifest): Promise<{ readonly bestAsk?: number; readonly depthUsdAtMaxPrice: number }> {
     const book = await this.client.getOrderBook(target.tokenId);
     const bestAsk = bestAskFromBook(book);
-    return bestAsk === undefined ? {} : { bestAsk };
+    return {
+      ...(bestAsk === undefined ? {} : { bestAsk }),
+      depthUsdAtMaxPrice: depthUsdAtOrBelow(book, manifest.order.maxPrice),
+    };
   }
 
   private async postOrder(
@@ -180,6 +193,7 @@ export class PolymarketTradingClient implements TradingClient {
     target: MarketTarget,
     preflight: OrderPreflight,
     event: SignalEvent,
+    amountUsd: number,
   ): Promise<unknown> {
     const orderType = toOrderType(manifest.order.type);
     const metadata = metadataFor(manifest, event);
@@ -188,7 +202,7 @@ export class PolymarketTradingClient implements TradingClient {
         {
           tokenID: target.tokenId,
           price: manifest.order.maxPrice,
-          amount: manifest.order.amountUsd,
+          amount: amountUsd,
           side: Side.BUY,
           orderType,
           metadata,
@@ -200,7 +214,7 @@ export class PolymarketTradingClient implements TradingClient {
     }
 
     const price = manifest.order.maxPrice;
-    const size = roundSize(manifest.order.amountUsd / price);
+    const size = roundSize(amountUsd / price);
     return this.client.createAndPostOrder(
       {
         tokenID: target.tokenId,
@@ -266,7 +280,37 @@ export function assertPricePreflight(manifest: Manifest, preflight: OrderPreflig
   }
 }
 
-function normalizeOrderResponse(response: unknown): OrderSubmission {
+export function depthUsdAtOrBelow(book: OrderBookSummary, maxPrice: number): number {
+  return book.asks.reduce((sum, ask) => {
+    const price = Number(ask.price);
+    const size = Number(ask.size);
+    if (!Number.isFinite(price) || !Number.isFinite(size) || price > maxPrice) {
+      return sum;
+    }
+    return sum + price * size;
+  }, 0);
+}
+
+export function resolveOrderAmountUsd(manifest: Manifest, preflight: OrderPreflight): number {
+  const ceiling = manifest.order.amountUsd;
+  const sizing = manifest.order.sizing;
+  if (!sizing) {
+    return ceiling;
+  }
+  const depthUsd = preflight.depthUsdAtMaxPrice ?? 0;
+  const amountUsd = roundUsd(Math.min(ceiling, sizing.fraction * depthUsd));
+  if (amountUsd <= 0) {
+    throw new OrderSkippedError(`No depth at or below maxPrice ${manifest.order.maxPrice}.`);
+  }
+  if (sizing.minUsd !== undefined && amountUsd < sizing.minUsd) {
+    throw new OrderSkippedError(
+      `Sized order $${amountUsd.toFixed(2)} is below order.sizing.minUsd $${sizing.minUsd.toFixed(2)} (depth $${depthUsd.toFixed(2)} at or below maxPrice ${manifest.order.maxPrice}).`,
+    );
+  }
+  return amountUsd;
+}
+
+function normalizeOrderResponse(response: unknown, amountUsd?: number): OrderSubmission {
   const candidate = response as Partial<OrderResponse> | undefined;
   const orderId = typeof candidate?.orderID === "string" && candidate.orderID.length > 0
     ? asOrderId(candidate.orderID)
@@ -275,8 +319,13 @@ function normalizeOrderResponse(response: unknown): OrderSubmission {
     ...(orderId ? { orderId } : {}),
     status: typeof candidate?.status === "string" ? candidate.status : "submitted",
     success: typeof candidate?.success === "boolean" ? candidate.success : true,
+    ...(amountUsd === undefined ? {} : { amountUsd }),
     raw: response,
   };
+}
+
+function roundUsd(value: number): number {
+  return Number(value.toFixed(2));
 }
 
 function metadataFor(manifest: Manifest, event: SignalEvent): string {

@@ -1181,6 +1181,29 @@
         "deferExecution": {
           "default": false,
           "type": "boolean"
+        },
+        "sizing": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "bookFraction"
+            },
+            "fraction": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "minUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "mode",
+            "fraction"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -1211,6 +1234,11 @@
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
+        },
+        "maxFractionPerExecution": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
         }
       },
       "required": [

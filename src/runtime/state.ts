@@ -150,7 +150,7 @@ export class JsonStateStore implements SignalState {
       executedAt: now.toISOString(),
       status: submission.status,
       ...(submission.orderId ? { orderId: submission.orderId } : {}),
-      ...(manifest.budget ? { budgetGroup: manifest.budget.group, budgetAmountUsd: manifest.order.amountUsd } : {}),
+      ...(manifest.budget ? { budgetGroup: manifest.budget.group, budgetAmountUsd: submission.amountUsd ?? manifest.order.amountUsd } : {}),
     };
     this.data.executions.push(record);
     await this.writeState();

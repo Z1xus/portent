@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { type ClobClient, OrderType, type OrderBookSummary } from "@polymarket/clob-client-v2";
 import { parseManifest } from "../src/config/manifest.ts";
 import type { MarketTarget } from "../src/markets/polymarket.ts";
-import { assertPricePreflight, bestAskFromBook, deriveOrCreateApiKeyCreds, PolymarketTradingClient, resolveApiKeyCreds, toOrderType, toSignatureType } from "../src/trading/polymarket.ts";
+import { assertPricePreflight, bestAskFromBook, depthUsdAtOrBelow, deriveOrCreateApiKeyCreds, OrderSkippedError, PolymarketTradingClient, resolveApiKeyCreds, resolveOrderAmountUsd, toOrderType, toSignatureType } from "../src/trading/polymarket.ts";
+import type { OrderPreflight } from "../src/trading/polymarket.ts";
 import { asTokenId, formatUnknownError } from "../src/types.ts";
 
 describe("trading helpers", () => {
@@ -148,6 +149,61 @@ describe("trading helpers", () => {
       secret: "created-secret",
       passphrase: "created-passphrase",
     });
+  });
+});
+
+describe("liquidity-aware sizing", () => {
+  function sizedManifest(sizing: unknown, amountUsd = 100) {
+    return parseManifest({
+      id: "sizing-test",
+      market: { url: "https://polymarket.com/event/event/market" },
+      signal: { type: "openai.models" },
+      condition: { type: "modelIdPresent", modelId: "gpt-5.6" },
+      order: { side: "BUY", amountUsd, maxPrice: 0.9, type: "FOK", ...(sizing ? { sizing } : {}) },
+    }, "inline.yaml");
+  }
+
+  function preflight(depthUsdAtMaxPrice: number): OrderPreflight {
+    return { tokenId: asTokenId("token"), tickSize: "0.01", negRisk: false, depthUsdAtMaxPrice };
+  }
+
+  test("sums ask depth at or below maxPrice", () => {
+    const book: OrderBookSummary = {
+      market: "condition",
+      asset_id: "token",
+      timestamp: "0",
+      bids: [],
+      asks: [{ price: "0.5", size: "100" }, { price: "0.9", size: "100" }, { price: "0.95", size: "100" }],
+      min_order_size: "1",
+      tick_size: "0.01",
+      neg_risk: false,
+      hash: "hash",
+      last_trade_price: "0.5",
+    };
+    expect(depthUsdAtOrBelow(book, 0.9)).toBeCloseTo(140);
+    expect(depthUsdAtOrBelow(book, 0.4)).toBe(0);
+  });
+
+  test("returns the full amount when no sizing is configured", () => {
+    expect(resolveOrderAmountUsd(sizedManifest(undefined), preflight(1000))).toBe(100);
+  });
+
+  test("scales spend to a fraction of available depth", () => {
+    expect(resolveOrderAmountUsd(sizedManifest({ mode: "bookFraction", fraction: 0.5 }), preflight(120))).toBe(60);
+  });
+
+  test("never exceeds amountUsd as the ceiling", () => {
+    expect(resolveOrderAmountUsd(sizedManifest({ mode: "bookFraction", fraction: 0.5 }), preflight(1000))).toBe(100);
+  });
+
+  test("skips when sized spend is below minUsd", () => {
+    expect(() => resolveOrderAmountUsd(sizedManifest({ mode: "bookFraction", fraction: 0.5, minUsd: 40 }), preflight(20)))
+      .toThrow(OrderSkippedError);
+  });
+
+  test("skips when there is no depth at or below maxPrice", () => {
+    expect(() => resolveOrderAmountUsd(sizedManifest({ mode: "bookFraction", fraction: 0.5 }), preflight(0)))
+      .toThrow(OrderSkippedError);
   });
 });
 

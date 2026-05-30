@@ -265,6 +265,12 @@ export const ConditionSchema: z.ZodType<ManifestCondition> = z.lazy(() => z.unio
   }),
 ]));
 
+const OrderSizingSchema = z.object({
+  mode: z.literal("bookFraction"),
+  fraction: z.number().positive().max(1),
+  minUsd: z.number().positive().optional(),
+}).strict();
+
 const OrderSchema = z.object({
   side: z.literal("BUY"),
   amountUsd: z.number().positive(),
@@ -274,6 +280,7 @@ const OrderSchema = z.object({
   expiresInSeconds: z.number().int().min(60).max(31_536_000).optional(),
   postOnly: z.boolean().default(false),
   deferExecution: z.boolean().default(false),
+  sizing: OrderSizingSchema.optional(),
 });
 
 const RepeatSchema = z.object({
@@ -285,6 +292,7 @@ const BudgetSchema = z.object({
   group: z.string().min(1).max(80),
   limitUsd: z.number().positive(),
   priority: z.number().int().default(100),
+  maxFractionPerExecution: z.number().positive().max(1).optional(),
 }).strict();
 
 const NotificationsSchema = z.object({
@@ -317,6 +325,16 @@ export const ManifestSchema = z.object({
       message: "A manifest must define 'market' or 'markets'.",
       path: ["market"],
     });
+  }
+  if (manifest.budget?.maxFractionPerExecution !== undefined) {
+    const cap = manifest.budget.maxFractionPerExecution * manifest.budget.limitUsd;
+    if (manifest.order.amountUsd > cap) {
+      ctx.addIssue({
+        code: "custom",
+        message: `order.amountUsd ${manifest.order.amountUsd} exceeds budget.maxFractionPerExecution cap ${cap} (${manifest.budget.maxFractionPerExecution} of ${manifest.budget.limitUsd}).`,
+        path: ["order", "amountUsd"],
+      });
+    }
   }
 });
 
