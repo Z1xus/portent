@@ -135,6 +135,23 @@ docker compose down
 
 The Compose file mounts `manifests/` read-only and `.portent/` read-write. It does not publish any ports. Secrets and live manifests are kept out of the image build context by `.dockerignore`.
 
+### Podman
+
+Both `Dockerfile` and `compose.yaml` also work with Podman, just swap the command:
+
+```bash
+podman compose build
+podman compose up -d
+```
+
+On rootless Podman, the container may not be able to write to `.portent/`. If you get permission errors, add `:Z` to the volumes (SELinux hosts) or run with `--userns=keep-id`:
+
+```yaml
+    volumes:
+      - ./manifests:/app/manifests:ro,Z
+      - ./.portent:/app/.portent:Z
+```
+
 ## Multiple markets
 
 Use `markets` when one condition maps to several targets:
