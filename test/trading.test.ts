@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { OrderType, type OrderBookSummary } from "@polymarket/clob-client-v2";
+import { type ClobClient, OrderType, type OrderBookSummary } from "@polymarket/clob-client-v2";
 import { parseManifest } from "../src/config/manifest.ts";
-import { assertPricePreflight, bestAskFromBook, deriveOrCreateApiKeyCreds, resolveApiKeyCreds, toOrderType, toSignatureType } from "../src/trading/polymarket.ts";
-import { asTokenId } from "../src/types.ts";
+import type { MarketTarget } from "../src/markets/polymarket.ts";
+import { assertPricePreflight, bestAskFromBook, deriveOrCreateApiKeyCreds, PolymarketTradingClient, resolveApiKeyCreds, toOrderType, toSignatureType } from "../src/trading/polymarket.ts";
+import { asTokenId, formatUnknownError } from "../src/types.ts";
 
 describe("trading helpers", () => {
   test("maps configured wallet and order types to SDK enums", () => {
@@ -147,5 +148,95 @@ describe("trading helpers", () => {
       secret: "created-secret",
       passphrase: "created-passphrase",
     });
+  });
+});
+
+describe("probe order", () => {
+  function probeTarget(): MarketTarget {
+    return {
+      id: "probe-market",
+      marketSlug: "probe-market",
+      outcome: "Yes",
+      tokenId: asTokenId("token-1"),
+    };
+  }
+
+  function probeBook(minOrderSize: string): OrderBookSummary {
+    return {
+      market: "condition",
+      asset_id: "token-1",
+      timestamp: "0",
+      bids: [],
+      asks: [],
+      min_order_size: minOrderSize,
+      tick_size: "0.01",
+      neg_risk: false,
+      hash: "hash",
+      last_trade_price: "0.5",
+    };
+  }
+
+  function probeClient(options: {
+    readonly minOrderSize?: string;
+    readonly placed: unknown;
+    readonly cancel?: () => Promise<unknown>;
+  }): { readonly client: ClobClient; readonly cancelCalls: string[] } {
+    const cancelCalls: string[] = [];
+    const client = {
+      getTickSize: async () => "0.01",
+      getNegRisk: async () => false,
+      getOrderBook: async () => probeBook(options.minOrderSize ?? "5"),
+      createAndPostOrder: async () => options.placed,
+      cancelOrder: async (payload: { orderID: string }) => {
+        cancelCalls.push(payload.orderID);
+        return options.cancel ? options.cancel() : { canceled: [payload.orderID] };
+      },
+    } as unknown as ClobClient;
+    return { client, cancelCalls };
+  }
+
+  test("places the market-minimum size at the lowest tick and cancels on success", async () => {
+    const { client, cancelCalls } = probeClient({
+      minOrderSize: "8",
+      placed: { orderID: "0xabc", status: "live", success: true },
+    });
+    const result = await new PolymarketTradingClient(client).probeOrder(probeTarget());
+    expect(result.price).toBe(0.01);
+    expect(result.size).toBe(8);
+    expect(String(result.placed.orderId)).toBe("0xabc");
+    expect(result.canceled).toBe(true);
+    expect(result.cancelError).toBeUndefined();
+    expect(cancelCalls).toEqual(["0xabc"]);
+  });
+
+  test("reports a cancel failure as data without losing the placed order", async () => {
+    const { client } = probeClient({
+      placed: { orderID: "0xdef", status: "live", success: true },
+      cancel: async () => {
+        throw new Error("cancel rejected");
+      },
+    });
+    const result = await new PolymarketTradingClient(client).probeOrder(probeTarget());
+    expect(String(result.placed.orderId)).toBe("0xdef");
+    expect(result.canceled).toBe(false);
+    expect(formatUnknownError(result.cancelError)).toContain("cancel rejected");
+  });
+
+  test("skips cancellation when no order id is returned", async () => {
+    const { client, cancelCalls } = probeClient({ placed: { status: "matched", success: true } });
+    const result = await new PolymarketTradingClient(client).probeOrder(probeTarget());
+    expect(result.placed.orderId).toBeUndefined();
+    expect(result.canceled).toBe(false);
+    expect(result.cancelError).toBeUndefined();
+    expect(cancelCalls).toEqual([]);
+  });
+
+  test("falls back to a default size when the book omits a minimum", async () => {
+    const { client } = probeClient({
+      minOrderSize: "0",
+      placed: { orderID: "0x1", status: "live", success: true },
+    });
+    const result = await new PolymarketTradingClient(client).probeOrder(probeTarget());
+    expect(result.size).toBe(5);
   });
 });

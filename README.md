@@ -112,6 +112,34 @@ bun run auth:derive  # print CLOB API credentials
 bun run schema       # emit the manifest JSON schema
 ```
 
+### Preflight (optional)
+
+`simulate` proves a condition *would* match, but it never touches your wallet, so it can't tell you whether an order would actually go through when the signal fires. `preflight` closes that gap. It's optional, but worth running before you enable a manifest.
+
+```bash
+bun run preflight                                 # check every enabled manifest in MANIFEST_DIR
+bun run preflight -- manifests/my-strategy.yaml   # check specific manifests
+```
+
+It first prints what it's about to do and waits for confirmation at the prompt. Pass `--yes` (or `-y`) to skip the prompt in non-interactive setups.
+
+By default it is read-only and places no orders. It:
+
+- builds the live CLOB client and posts a heartbeat to confirm your credentials, signature type, and funder address work;
+- sends a test message to your Telegram chat;
+- resolves each market and runs the same order preflight the runtime uses (tick size, negative-risk flag, best ask vs. `maxPrice`).
+
+It does **not** evaluate your signal or condition (that's `simulate`'s job); it only confirms each market is open within its `startAt`/`stopAt` window. Read-only mode also skips balance and allowance checks, so a passing run can still hit an order that fails for lack of funds. `--execute` covers that path.
+
+Add `--execute` to also place one real, deliberately non-marketable order (a post-only bid at the lowest tick) and immediately cancel it, proving the full sign/post/cancel path end to end:
+
+```bash
+bun run preflight -- --execute manifests/my-strategy.yaml
+```
+
+> [!CAUTION]
+> `--execute` signs and submits a real order against the live CLOB, sized at the market's minimum order size and lowest tick (usually well under a cent), then cancels it. If the cancel fails the bid stays on the book; the command prints its order id so you can cancel it on Polymarket.
+
 Once running, the Telegram bot listens for `/status` and `/help` from `TELEGRAM_CHAT_ID`. `/status` is read-only and reports uptime, signal health, and budget usage.
 
 ## Docker Compose

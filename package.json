@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run src/cli/check.ts",
     "simulate": "bun run src/cli/simulate.ts",
+    "preflight": "bun run src/cli/preflight.ts",
     "auth:derive": "bun run src/cli/auth-derive.ts",
     "schema": "bun run src/cli/schema.ts",
     "test": "bun test"

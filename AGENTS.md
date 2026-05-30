@@ -11,8 +11,11 @@ bun run typecheck
 bun run check
 bun test
 bun run simulate -- manifests/my-strategy.yaml
+bun run preflight -- manifests/my-strategy.yaml
 bun run schema
 ```
+
+`bun run preflight` is an optional live check. Read-only by default: it builds the real CLOB client, posts a heartbeat, sends a test Telegram message, and runs order preflight against resolved markets. It checks that markets resolve and are within their `startAt`/`stopAt` window; it does not evaluate signals/conditions (that's `simulate`) and does not check wallet balance or allowances. With `--execute` it places one post-only probe order at the market minimum size and lowest tick, then cancels it; a cancel failure is returned as data so the command can report the live order id rather than masking a placement success as a failure. The probe lives on the concrete `PolymarketTradingClient` (`probeOrder`), deliberately not on the `TradingClient` interface, so the runtime and test fakes stay minimal.
 
 `bun run check` runs TypeScript and validates every manifest in `MANIFEST_DIR` or `manifests/`.
 
@@ -307,6 +310,7 @@ Before enabling a manifest:
 
 - run `bun run check`
 - run `bun run simulate -- path/to/manifest.yaml`
+- optionally run `bun run preflight -- path/to/manifest.yaml` to confirm credentials, markets, and order preflight against the live CLOB
 - verify `.env` points at the intended wallet and chain
 - verify `POLYMARKET_SIGNATURE_TYPE`
 - verify `order.amountUsd`, `maxPrice`, and budget group

@@ -37,6 +37,18 @@ export interface OrderSubmission {
   readonly raw: unknown;
 }
 
+export interface OrderProbeResult {
+  readonly tokenId: TokenId;
+  readonly price: number;
+  readonly size: number;
+  readonly placed: OrderSubmission;
+  readonly canceled: boolean;
+  readonly cancelRaw: unknown;
+  readonly cancelError?: unknown;
+}
+
+const PROBE_FALLBACK_SHARES = 5;
+
 export async function createPolymarketTradingClient(env: RuntimeEnv): Promise<PolymarketTradingClient> {
   const account = privateKeyToAccount(env.polymarket.privateKey);
   const signer = createWalletClient({
@@ -127,6 +139,34 @@ export class PolymarketTradingClient implements TradingClient {
 
   public async heartbeat(): Promise<void> {
     await this.client.postHeartbeat();
+  }
+
+  public async probeOrder(target: MarketTarget): Promise<OrderProbeResult> {
+    const [tickSize, negRisk, book] = await Promise.all([
+      this.client.getTickSize(target.tokenId),
+      this.client.getNegRisk(target.tokenId),
+      this.client.getOrderBook(target.tokenId),
+    ]);
+    const price = Number(tickSize);
+    const size = probeSize(book);
+    const placed = normalizeOrderResponse(
+      await this.client.createAndPostOrder(
+        { tokenID: target.tokenId, price, size, side: Side.BUY },
+        { tickSize, negRisk },
+        OrderType.GTC,
+        true,
+        false,
+      ),
+    );
+    if (!placed.orderId) {
+      return { tokenId: target.tokenId, price, size, placed, canceled: false, cancelRaw: undefined };
+    }
+    try {
+      const cancelRaw = await this.client.cancelOrder({ orderID: placed.orderId });
+      return { tokenId: target.tokenId, price, size, placed, canceled: true, cancelRaw };
+    } catch (error) {
+      return { tokenId: target.tokenId, price, size, placed, canceled: false, cancelRaw: undefined, cancelError: error };
+    }
   }
 
   private async bestAskIfImmediate(target: MarketTarget, _manifest: Manifest): Promise<{ readonly bestAsk?: number }> {
@@ -248,6 +288,11 @@ function metadataFor(manifest: Manifest, event: SignalEvent): string {
 
 function roundSize(value: number): number {
   return Number(value.toFixed(6));
+}
+
+function probeSize(book: OrderBookSummary): number {
+  const minOrderSize = Number(book.min_order_size);
+  return roundSize(Number.isFinite(minOrderSize) && minOrderSize > 0 ? minOrderSize : PROBE_FALLBACK_SHARES);
 }
 
 function formatAuthError(error: unknown): string {

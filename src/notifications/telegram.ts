@@ -7,6 +7,7 @@ import { formatUnknownError } from "../types.ts";
 
 export type NotificationEvent =
   | { readonly type: "startup"; readonly manifestCount: number; readonly enabledCount: number }
+  | { readonly type: "preflight" }
   | { readonly type: "manifestArmed"; readonly manifest: Manifest }
   | { readonly type: "manifestDisabled"; readonly manifest: Manifest }
   | { readonly type: "manifestExpired"; readonly manifest: Manifest; readonly stopAt: Date }
@@ -81,6 +82,8 @@ export function formatNotification(event: NotificationEvent): string {
   switch (event.type) {
     case "startup":
       return `Portent started. manifests=${event.manifestCount}, enabled=${event.enabledCount}`;
+    case "preflight":
+      return "Portent preflight check. If you can read this, Telegram alerts are wired up correctly.";
     case "manifestArmed":
       return `Manifest armed: ${event.manifest.id} -> ${formatManifestMarkets(event.manifest)}`;
     case "manifestDisabled":
