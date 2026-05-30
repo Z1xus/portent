@@ -1,0 +1,15 @@
+services:
+  portent:
+    build:
+      context: .
+    image: portent:local
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MANIFEST_DIR: /app/manifests
+      STATE_DIR: /app/.portent
+    volumes:
+      - ./manifests:/app/manifests:ro
+      - ./.portent:/app/.portent

@@ -114,6 +114,27 @@ bun run schema       # emit the manifest JSON schema
 
 Once running, the Telegram bot listens for `/status` and `/help` from `TELEGRAM_CHAT_ID`. `/status` is read-only and reports uptime, signal health, and budget usage.
 
+## Docker Compose
+
+Use Compose when you want Portent to run as a restartable service.
+
+```bash
+docker compose build
+docker compose run --rm portent bun run check
+docker compose run --rm portent bun run simulate -- /app/manifests/my-strategy.yaml
+docker compose up -d
+```
+
+Useful operations:
+
+```bash
+docker compose logs -f portent
+docker compose restart portent
+docker compose down
+```
+
+The Compose file mounts `manifests/` read-only and `.portent/` read-write. It does not publish any ports. Secrets and live manifests are kept out of the image build context by `.dockerignore`.
+
 ## Multiple markets
 
 Use `markets` when one condition maps to several targets:
