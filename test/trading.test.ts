@@ -73,6 +73,7 @@ describe("trading helpers", () => {
         chatId: "chat",
       },
       openai: {},
+      xai: {},
       x: {},
       truthSocial: {
         baseUrl: "https://truthsocial.com",
@@ -110,6 +111,7 @@ describe("trading helpers", () => {
         chatId: "chat",
       },
       openai: {},
+      xai: {},
       x: {},
       truthSocial: {
         baseUrl: "https://truthsocial.com",

@@ -25,6 +25,7 @@ const RuntimeEnvBaseSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_CHAT_ID: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  XAI_API_KEY: z.string().min(1).optional(),
   X_BEARER_TOKEN: z.string().min(1).optional(),
   TRUTH_SOCIAL_BASE_URL: z.url().default("https://truthsocial.com"),
   MANIFEST_DIR: z.string().min(1).default("manifests"),
@@ -70,6 +71,9 @@ export interface RuntimeEnv {
   readonly openai: {
     readonly apiKey?: string;
   };
+  readonly xai: {
+    readonly apiKey?: string;
+  };
   readonly x: {
     readonly bearerToken?: string;
   };
@@ -99,6 +103,9 @@ export interface OptionalRuntimeEnv {
     readonly chatId: string;
   };
   readonly openai: {
+    readonly apiKey?: string;
+  };
+  readonly xai: {
     readonly apiKey?: string;
   };
   readonly x: {
@@ -145,6 +152,7 @@ export function parseRuntimeEnv(raw: Record<string, string | undefined>): Runtim
       chatId: parsed.TELEGRAM_CHAT_ID,
     },
     openai: optionalApiKey(parsed.OPENAI_API_KEY),
+    xai: optionalApiKey(parsed.XAI_API_KEY),
     x: optionalBearerToken(parsed.X_BEARER_TOKEN),
     truthSocial: {
       baseUrl: parsed.TRUTH_SOCIAL_BASE_URL,
@@ -175,6 +183,7 @@ export function parseOptionalRuntimeEnv(raw: Record<string, string | undefined>)
       ? { telegram: { botToken: parsed.TELEGRAM_BOT_TOKEN, chatId: parsed.TELEGRAM_CHAT_ID } }
       : {}),
     openai: optionalApiKey(parsed.OPENAI_API_KEY),
+    xai: optionalApiKey(parsed.XAI_API_KEY),
     x: optionalBearerToken(parsed.X_BEARER_TOKEN),
     truthSocial: {
       baseUrl: parsed.TRUTH_SOCIAL_BASE_URL,

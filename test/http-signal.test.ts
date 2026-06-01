@@ -50,6 +50,7 @@ describe("http.poll signal", () => {
           signatureType: "POLY_PROXY",
         },
         openai: {},
+        xai: {},
         x: {},
         truthSocial: {
           baseUrl: "https://truthsocial.com",

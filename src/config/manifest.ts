@@ -41,6 +41,20 @@ const OpenAiModelsSignalSchema = z.object({
   request: RequestPolicySchema,
 });
 
+const OpenRouterModelsSignalSchema = z.object({
+  type: z.literal("openrouter.models"),
+  pollMs: PollMsSchema.default(300_000),
+  baseUrl: z.url().default("https://openrouter.ai/api/v1/models"),
+  request: RequestPolicySchema,
+});
+
+const XAiModelsSignalSchema = z.object({
+  type: z.literal("xai.models"),
+  pollMs: PollMsSchema.default(300_000),
+  baseUrl: z.url().default("https://api.x.ai/v1/models"),
+  request: RequestPolicySchema,
+});
+
 const XFilteredStreamRuleSchema = z.object({
   value: z.string().min(1),
   tag: z.string().min(1).max(64),
@@ -141,6 +155,8 @@ const WebSocketJsonSignalSchema = z.object({
 
 export const SignalSchema = z.discriminatedUnion("type", [
   OpenAiModelsSignalSchema,
+  OpenRouterModelsSignalSchema,
+  XAiModelsSignalSchema,
   XFilteredStreamSignalSchema,
   TruthSocialSignalSchema,
   HttpPollSignalSchema,

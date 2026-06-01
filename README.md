@@ -369,14 +369,22 @@ signal:
 
 `rss.feed`, `web.page`, and `websocket.json` support `auth`, `headers`, and `headersFromEnv` like `http.poll`.
 
-### OpenAI models (`openai.models`)
+### Model list signals (`openai.models`, `openrouter.models`, `xai.models`)
 
-Polls OpenAI's `/v1/models` and emits the current list of model ids, so you can trade on a model going live. Reads `OPENAI_API_KEY` from `.env`. Pair it with the `modelIdPresent` condition.
+Polls a provider's `/v1/models` endpoint and emits the current sorted list of model ids, so you can trade on a model going live. Pair these with the `modelIdPresent` condition.
+
+- `openai.models` reads `OPENAI_API_KEY` from `.env`.
+- `openrouter.models` polls OpenRouter's public model list.
+- `xai.models` reads `XAI_API_KEY` from `.env`. xAI requires a topped-up account with at least $5 in credits for this endpoint.
 
 ```yaml
 signal:
-  type: openai.models
-  pollMs: 300000
+  type: xai.models
+  pollMs: 10000
+condition:
+  type: modelIdPresent
+  modelId: "(?:^|/)grok-?5(?:[.\\-]|$)"
+  match: regex
 ```
 
 Each event exposes `modelIds` (sorted) and `count` to conditions. Override `baseUrl` to point at a compatible API.

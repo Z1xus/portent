@@ -31,6 +31,7 @@ export function contextWithText(text: string, signal = new AbortController().sig
         signatureType: "POLY_PROXY",
       },
       openai: {},
+      xai: {},
       x: {},
       truthSocial: { baseUrl: "https://truthsocial.com" },
       paths: { manifestDir: "manifests", stateDir: ".portent" },

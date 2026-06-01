@@ -19,6 +19,7 @@ describe("env parsing", () => {
     expect(env.polymarket.chainId).toBe(137);
     expect(env.polymarket.signatureType).toBe("GNOSIS_SAFE");
     expect(env.telegram.chatId).toBe("chat");
+    expect(env.xai.apiKey).toBeUndefined();
   });
 
   test("allows missing CLOB API credentials for startup derivation", () => {
