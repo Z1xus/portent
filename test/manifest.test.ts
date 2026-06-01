@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseManifest, validateManifestSet } from "../src/config/manifest.ts";
+import { manifestSignals, parseManifest, validateManifestSet } from "../src/config/manifest.ts";
 
 const baseManifest = {
   id: "test-manifest",
@@ -67,6 +67,21 @@ describe("manifest schema", () => {
       throw new Error("expected and condition");
     }
     expect(manifest.condition.conditions[1]?.type).toBe("or");
+  });
+
+  test("parses multiple alternative signals", () => {
+    const manifest = parseManifest({
+      ...baseManifest,
+      signal: {
+        type: "or",
+        signals: [
+          { type: "xai.models", pollMs: 10_000 },
+          { type: "openrouter.models", pollMs: 10_000 },
+        ],
+      },
+    }, "inline.yaml");
+
+    expect(manifestSignals(manifest).map((signal) => signal.type)).toEqual(["xai.models", "openrouter.models"]);
   });
 
   test("parses optional bookFraction sizing", () => {

@@ -1,6 +1,6 @@
 import { evaluateCondition } from "../conditions.ts";
 import { loadOptionalRuntimeEnv } from "../config/env.ts";
-import { loadManifestDir, loadManifestFile, type Manifest } from "../config/manifest.ts";
+import { loadManifestDir, loadManifestFile, manifestSignals, type Manifest } from "../config/manifest.ts";
 import { GammaMarketResolver } from "../markets/polymarket.ts";
 import { readSignalSnapshot } from "../signals/index.ts";
 
@@ -30,11 +30,11 @@ for (const { manifest, source } of manifests) {
   const target = await marketResolver.resolve(manifest);
   console.log(`Resolved market: ${target.marketSlug} / ${target.outcome} / token=${target.tokenId}`);
 
-  const events = await readSignalSnapshot(manifest.signal, {
+  const events = (await Promise.all(manifestSignals(manifest).map((signal) => readSignalSnapshot(signal, {
     env,
     fetcher: fetch,
     abortSignal: new AbortController().signal,
-  });
+  })))).flat();
   if (events.length === 0) {
     console.log("No signal events available for simulation.");
     continue;

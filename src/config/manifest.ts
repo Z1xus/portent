@@ -153,7 +153,7 @@ const WebSocketJsonSignalSchema = z.object({
   textPath: z.string().min(1).optional(),
 });
 
-export const SignalSchema = z.discriminatedUnion("type", [
+export const ConcreteSignalSchema = z.discriminatedUnion("type", [
   OpenAiModelsSignalSchema,
   OpenRouterModelsSignalSchema,
   XAiModelsSignalSchema,
@@ -164,6 +164,20 @@ export const SignalSchema = z.discriminatedUnion("type", [
   WebPageSignalSchema,
   WebSocketJsonSignalSchema,
 ]);
+
+export type ConcreteManifestSignal = z.output<typeof ConcreteSignalSchema>;
+
+export type ManifestSignal =
+  | ConcreteManifestSignal
+  | { readonly type: "or"; readonly signals: readonly ManifestSignal[] };
+
+export const SignalSchema: z.ZodType<ManifestSignal> = z.lazy(() => z.union([
+  ConcreteSignalSchema,
+  z.object({
+    type: z.literal("or"),
+    signals: z.array(SignalSchema).min(1),
+  }),
+]));
 
 const ModelIdPresentConditionSchema = z.object({
   type: z.literal("modelIdPresent"),
@@ -355,7 +369,6 @@ export const ManifestSchema = z.object({
 });
 
 export type RawManifest = z.output<typeof ManifestSchema>;
-export type ManifestSignal = z.output<typeof SignalSchema>;
 export type ManifestOrder = z.output<typeof OrderSchema>;
 export type ManifestMarket = z.output<typeof MarketSchema>;
 
@@ -398,6 +411,19 @@ export function manifestMarkets(manifest: Manifest): readonly ManifestMarket[] {
     return [manifest.market];
   }
   throw new Error(`Manifest ${manifest.id} has no market targets.`);
+}
+
+export function manifestSignals(manifest: Manifest): readonly ConcreteManifestSignal[] {
+  return concreteSignals(manifest.signal);
+}
+
+function concreteSignals(signal: ManifestSignal): readonly ConcreteManifestSignal[] {
+  switch (signal.type) {
+    case "or":
+      return signal.signals.flatMap((child) => concreteSignals(child));
+    default:
+      return [signal];
+  }
 }
 
 export function validateManifestSet(manifests: readonly Manifest[]): void {

@@ -1,4 +1,4 @@
-import type { ManifestSignal } from "../config/manifest.ts";
+import type { ConcreteManifestSignal } from "../config/manifest.ts";
 import { assertNever } from "../types.ts";
 import { readHttpPollSnapshot, streamHttpPoll } from "./http-poll.ts";
 import { readOpenAiModelsSnapshot, streamOpenAiModels } from "./openai.ts";
@@ -12,7 +12,7 @@ import { readXSnapshot, streamXFilteredStream } from "./x.ts";
 import { readXAiModelsSnapshot, streamXAiModels } from "./xai.ts";
 
 export function streamSignal(
-  signal: ManifestSignal,
+  signal: ConcreteManifestSignal,
   context: SignalContext,
 ): AsyncIterable<SignalEvent> {
   switch (signal.type) {
@@ -40,7 +40,7 @@ export function streamSignal(
 }
 
 export function readSignalSnapshot(
-  signal: ManifestSignal,
+  signal: ConcreteManifestSignal,
   context: SignalContext,
 ): Promise<readonly SignalEvent[]> {
   switch (signal.type) {

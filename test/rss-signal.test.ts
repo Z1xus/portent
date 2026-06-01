@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseManifest } from "../src/config/manifest.ts";
 import { readSignalSnapshot, streamSignal } from "../src/signals/index.ts";
-import { baseManifest, contextWithText, MemoryState, wait } from "./signal-test-utils.ts";
+import { baseManifest, contextWithText, firstSignal, MemoryState, wait } from "./signal-test-utils.ts";
 
 describe("rss.feed signal", () => {
   test("emits feed entries", async () => {
@@ -9,7 +9,7 @@ describe("rss.feed signal", () => {
       type: "rss.feed",
       url: "https://example.com/feed.xml",
     }), "inline.yaml");
-    const events = await readSignalSnapshot(manifest.signal, contextWithText(`
+    const events = await readSignalSnapshot(firstSignal(manifest), contextWithText(`
       <rss><channel><item><title>Release shipped</title><link>https://example.com/post</link><guid>post-1</guid><pubDate>Fri, 29 May 2026 10:00:00 GMT</pubDate><description>hello</description></item></channel></rss>
     `));
     expect(events).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("rss.feed signal", () => {
       type: "rss.feed",
       url: "https://example.com/atom.xml",
     }), "inline.yaml");
-    const events = await readSignalSnapshot(manifest.signal, contextWithText(`
+    const events = await readSignalSnapshot(firstSignal(manifest), contextWithText(`
       <feed><entry><title>Atom release</title><id>tag:example,2026:1</id><updated>2026-05-29T10:00:00Z</updated><link rel="alternate" href="https://example.com/atom-post" /><summary>done</summary></entry></feed>
     `));
     expect(events[0]?.text).toContain("Atom release");
@@ -39,7 +39,7 @@ describe("rss.feed signal", () => {
     }), "inline.yaml");
     const abort = new AbortController();
     const state = new MemoryState();
-    const iterator = streamSignal(manifest.signal, contextWithText(feedXml("new", "old"), abort.signal, state))[Symbol.asyncIterator]();
+    const iterator = streamSignal(firstSignal(manifest), contextWithText(feedXml("new", "old"), abort.signal, state))[Symbol.asyncIterator]();
     const next = iterator.next();
     await wait(20);
     abort.abort();
@@ -55,11 +55,11 @@ describe("rss.feed signal", () => {
       pollMs: 1000,
       startFromLatest: false,
     }), "inline.yaml");
-    const oldId = (await readSignalSnapshot(manifest.signal, contextWithText(feedXml("old"))))[0]?.id;
+    const oldId = (await readSignalSnapshot(firstSignal(manifest), contextWithText(feedXml("old"))))[0]?.id;
     expect(oldId).toBeDefined();
     const state = new MemoryState({ "rss.feed:last:https://example.com/feed.xml": oldId ?? "" });
     const abort = new AbortController();
-    const iterator = streamSignal(manifest.signal, contextWithText(feedXml("new", "old", "older"), abort.signal, state))[Symbol.asyncIterator]();
+    const iterator = streamSignal(firstSignal(manifest), contextWithText(feedXml("new", "old", "older"), abort.signal, state))[Symbol.asyncIterator]();
     const result = await iterator.next();
     abort.abort();
     expect(result.value?.text).toContain("new");

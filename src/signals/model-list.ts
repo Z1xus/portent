@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { ManifestSignal } from "../config/manifest.ts";
+import type { ConcreteManifestSignal } from "../config/manifest.ts";
 import { fetchJson } from "../http.ts";
 import { sleep } from "../sleep.ts";
 import { asSignalEventId } from "../types.ts";
 import type { SignalContext, SignalEvent } from "./types.ts";
 
 export interface ModelListSignal {
-  readonly type: Extract<ManifestSignal["type"], "openai.models" | "openrouter.models" | "xai.models">;
+  readonly type: Extract<ConcreteManifestSignal["type"], "openai.models" | "openrouter.models" | "xai.models">;
   readonly pollMs: number;
   readonly baseUrl: string;
   readonly request: {

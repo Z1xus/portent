@@ -1,6 +1,6 @@
 import { evaluateCondition } from "../conditions.ts";
 import type { RuntimeEnv } from "../config/env.ts";
-import type { Manifest } from "../config/manifest.ts";
+import { manifestSignals, type ConcreteManifestSignal, type Manifest } from "../config/manifest.ts";
 import type { Fetcher } from "../http.ts";
 import { stableJsonStringify } from "../json-path.ts";
 import {
@@ -48,25 +48,27 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
 
 interface ManifestGroup {
   readonly key: string;
-  readonly signal: Manifest["signal"];
+  readonly signal: ConcreteManifestSignal;
   readonly manifests: readonly Manifest[];
 }
 
 function groupManifestsBySignal(manifests: readonly Manifest[]): readonly ManifestGroup[] {
-  const groups = new Map<string, Manifest[]>();
+  const groups = new Map<string, { readonly signal: ConcreteManifestSignal; readonly manifests: Manifest[] }>();
   for (const manifest of manifests) {
-    const key = stableJsonStringify(manifest.signal);
-    const group = groups.get(key);
-    if (group) {
-      group.push(manifest);
-    } else {
-      groups.set(key, [manifest]);
+    for (const signal of manifestSignals(manifest)) {
+      const key = stableJsonStringify(signal);
+      const group = groups.get(key);
+      if (group) {
+        group.manifests.push(manifest);
+      } else {
+        groups.set(key, { signal, manifests: [manifest] });
+      }
     }
   }
-  return Array.from(groups.values(), (group) => ({
-    key: stableJsonStringify(group[0]?.signal ?? unreachableEmptyGroup()),
-    signal: group[0]?.signal ?? unreachableEmptyGroup(),
-    manifests: group,
+  return Array.from(groups.entries(), ([key, group]) => ({
+    key,
+    signal: group.signal,
+    manifests: group.manifests,
   }));
 }
 
@@ -184,6 +186,7 @@ function shouldNotifySkippedReservation(reason: string): boolean {
   return !(
     reason.includes("was already executed")
     || reason.includes("order.once already executed")
+    || reason.includes("order.once already reserved")
     || reason.includes("repeat cooldown active")
   );
 }
@@ -256,10 +259,6 @@ export async function selectMarketTarget(
 
 function unreachableNoTarget(manifest: Manifest, reason = "No market target selected."): never {
   throw new Error(`Manifest ${manifest.id}: ${reason}`);
-}
-
-function unreachableEmptyGroup(): never {
-  throw new Error("Internal error: manifest group is empty.");
 }
 
 interface ScopedAbort {

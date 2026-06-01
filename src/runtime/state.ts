@@ -47,6 +47,7 @@ export class JsonStateStore implements SignalState {
   private readonly orderLedgerPath: string;
   private data: StateData = { executions: [], lastSeen: {} };
   private readonly pendingBudgetUsd = new Map<string, number>();
+  private readonly pendingManifestExecutions = new Set<string>();
 
   public constructor(private readonly dir: string) {
     this.statePath = join(dir, "state.json");
@@ -93,13 +94,26 @@ export class JsonStateStore implements SignalState {
     if (!execution.allowed) {
       return rejectedReservation(execution.reason);
     }
+    const pendingKey = `${manifest.id}`;
+    if (!manifest.repeat && manifest.order.once && this.pendingManifestExecutions.has(pendingKey)) {
+      return rejectedReservation("manifest order.once already reserved");
+    }
+    this.pendingManifestExecutions.add(pendingKey);
     const budget = manifest.budget;
     if (!budget) {
       return {
         allowed: true,
         reason: "allowed",
-        commit: (submission, commitNow) => this.recordExecution(manifest, event, submission, commitNow),
-        release: () => {},
+        commit: async (submission, commitNow) => {
+          try {
+            await this.recordExecution(manifest, event, submission, commitNow);
+          } finally {
+            this.pendingManifestExecutions.delete(pendingKey);
+          }
+        },
+        release: () => {
+          this.pendingManifestExecutions.delete(pendingKey);
+        },
       };
     }
 
@@ -119,6 +133,7 @@ export class JsonStateStore implements SignalState {
         return;
       }
       active = false;
+      this.pendingManifestExecutions.delete(pendingKey);
       this.pendingBudgetUsd.set(
         budget.group,
         Math.max(0, (this.pendingBudgetUsd.get(budget.group) ?? 0) - manifest.order.amountUsd),

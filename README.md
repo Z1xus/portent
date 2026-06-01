@@ -94,6 +94,18 @@ Portent resolves the Polymarket URL to the token id for `outcome`, then posts th
 
 `market.startAt` delays polling until the window opens. Polling stops at the market's resolution date if Polymarket exposes one, otherwise at `market.stopAt`. After that the manifest is expired and stops trading.
 
+Use `signal: { type: or, signals: [...] }` when several providers should trigger the same market/order. Portent runs one loop per concrete signal, and `order.once` still means the manifest can submit only once across all of them.
+
+```yaml
+signal:
+  type: or
+  signals:
+    - type: xai.models
+      pollMs: 10000
+    - type: openrouter.models
+      pollMs: 10000
+```
+
 ## Run it
 
 Validate everything, dry-run your manifest, then start:
@@ -379,8 +391,12 @@ Polls a provider's `/v1/models` endpoint and emits the current sorted list of mo
 
 ```yaml
 signal:
-  type: xai.models
-  pollMs: 10000
+  type: or
+  signals:
+    - type: xai.models
+      pollMs: 10000
+    - type: openrouter.models
+      pollMs: 10000
 condition:
   type: modelIdPresent
   modelId: "(?:^|/)grok-?5(?:[.\\-]|$)"

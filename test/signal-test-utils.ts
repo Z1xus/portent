@@ -1,3 +1,5 @@
+import { manifestSignals, type Manifest } from "../src/config/manifest.ts";
+import type { ConcreteManifestSignal } from "../src/config/manifest.ts";
 import type { SignalContext, SignalState } from "../src/signals/types.ts";
 
 export function baseManifest(signal: Record<string, unknown>) {
@@ -40,6 +42,14 @@ export function contextWithText(text: string, signal = new AbortController().sig
     ...(state ? { state } : {}),
     abortSignal: signal,
   };
+}
+
+export function firstSignal(manifest: Manifest): ConcreteManifestSignal {
+  const signal = manifestSignals(manifest)[0];
+  if (!signal) {
+    throw new Error("manifest has no concrete signals");
+  }
+  return signal;
 }
 
 export class MemoryState implements SignalState {

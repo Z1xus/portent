@@ -69,6 +69,20 @@ describe("state store", () => {
     firstReservation.release();
   });
 
+  test("blocks concurrent once reservations for the same manifest", async () => {
+    const manifest = manifestWithBudget("once-pending", 10, 30);
+    const state = new JsonStateStore(tmpDir);
+    await state.init();
+
+    const firstReservation = state.reserveExecution(manifest, signalEvent("xai-event"));
+    const secondReservation = state.reserveExecution(manifest, signalEvent("openrouter-event"));
+
+    expect(firstReservation.allowed).toBe(true);
+    expect(secondReservation.allowed).toBe(false);
+    expect(secondReservation.reason).toContain("order.once already reserved");
+    firstReservation.release();
+  });
+
   test("commits the actual sized spend, freeing the unused reservation", async () => {
     const first = manifestWithBudget("budget-a", 20, 30);
     const second = manifestWithBudget("budget-b", 20, 30);
