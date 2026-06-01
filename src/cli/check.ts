@@ -1,7 +1,8 @@
 import { loadManifestDir } from "../config/manifest.ts";
+import { item, pass } from "./format.ts";
 
 const manifestDir = Bun.env["MANIFEST_DIR"] ?? "manifests";
 const manifests = await loadManifestDir(manifestDir);
 const enabled = manifests.filter((manifest) => manifest.enabled);
 
-console.log(`Manifest check passed. manifests=${manifests.length}, enabled=${enabled.length}`);
+pass(`Manifest check passed. ${item("dir", manifestDir)} ${item("manifests", String(manifests.length))} ${item("enabled", String(enabled.length))}`);

@@ -3,6 +3,7 @@ import { loadOptionalRuntimeEnv } from "../config/env.ts";
 import { loadManifestDir, loadManifestFile, manifestSignals, type Manifest } from "../config/manifest.ts";
 import { GammaMarketResolver } from "../markets/polymarket.ts";
 import { readSignalSnapshot } from "../signals/index.ts";
+import { color, info, item, pass, section, status, warn } from "./format.ts";
 
 const manifestPaths = Bun.argv.slice(2).filter((arg) => arg !== "--");
 
@@ -20,15 +21,16 @@ if (manifestPaths.length > 0) {
     .filter((manifest) => manifest.enabled)
     .map((manifest) => ({ manifest, source: env.paths.manifestDir }));
   if (manifests.length === 0) {
-    console.log("No enabled manifests to simulate. Pass a path, or enable a manifest in MANIFEST_DIR.");
+    warn("No enabled manifests to simulate. Pass a path, or enable a manifest in MANIFEST_DIR.");
     process.exit(0);
   }
 }
 
 for (const { manifest, source } of manifests) {
-  console.log(`Simulating ${manifest.id} (${source})`);
+  section(`Simulate ${manifest.id}`);
+  info(`Loaded from ${source}`);
   const target = await marketResolver.resolve(manifest);
-  console.log(`Resolved market: ${target.marketSlug} / ${target.outcome} / token=${target.tokenId}`);
+  pass(`Resolved market. ${item("market", target.marketSlug)} ${item("outcome", target.outcome)} ${item("token", target.tokenId)}`);
 
   const events = (await Promise.all(manifestSignals(manifest).map((signal) => readSignalSnapshot(signal, {
     env,
@@ -36,14 +38,16 @@ for (const { manifest, source } of manifests) {
     abortSignal: new AbortController().signal,
   })))).flat();
   if (events.length === 0) {
-    console.log("No signal events available for simulation.");
+    warn("No signal events available for simulation.");
     continue;
   }
   for (const event of events) {
     const result = evaluateCondition(manifest.condition, event);
-    console.log(`${event.id}: matched=${result.matched} reason=${result.reason}`);
+    const matchStatus = result.matched ? "matched" : "missed";
+    console.log(`  ${status(matchStatus)} ${item("event", event.id)} ${item("source", event.source)}`);
+    console.log(`        ${color(result.reason, "dim")}`);
     if (result.matched) {
-      console.log(`Would submit ${manifest.order.type} ${manifest.order.side} order: amountUsd=${manifest.order.amountUsd}, maxPrice=${manifest.order.maxPrice}`);
+      pass(`Would submit ${manifest.order.type} ${manifest.order.side} order. ${item("amountUsd", String(manifest.order.amountUsd))} ${item("maxPrice", String(manifest.order.maxPrice))}`);
     }
   }
 }

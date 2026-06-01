@@ -4,6 +4,7 @@ import { GammaMarketResolver, isMarketTargetLive, type MarketTarget } from "../m
 import { TelegramNotifier } from "../notifications/telegram.ts";
 import { assertPricePreflight, createPolymarketTradingClient, type PolymarketTradingClient } from "../trading/polymarket.ts";
 import { formatUnknownError } from "../types.ts";
+import { color, fail as printFail, info, item, pass, section, title, warn } from "./format.ts";
 
 const args = Bun.argv.slice(2).filter((arg) => arg !== "--");
 const execute = args.includes("--execute");
@@ -18,15 +19,13 @@ if (!confirm()) {
 }
 
 let failures = 0;
-function pass(message: string): void {
-  console.log(`  OK    ${message}`);
-}
 function fail(message: string): void {
   failures += 1;
-  console.log(`  FAIL  ${message}`);
+  printFail(message);
 }
 
-pass(`Environment parsed. chain=${env.polymarket.chainId}, signatureType=${env.polymarket.signatureType}, funder=${env.polymarket.funderAddress}`);
+section("Preflight");
+pass(`Environment parsed. ${item("chain", String(env.polymarket.chainId))} ${item("signatureType", env.polymarket.signatureType)} ${item("funder", env.polymarket.funderAddress)}`);
 
 let trading: PolymarketTradingClient;
 try {
@@ -62,7 +61,7 @@ const marketResolver = new GammaMarketResolver({ fetcher: fetch });
 const probeCandidates: { readonly manifest: Manifest; readonly target: MarketTarget }[] = [];
 
 for (const manifest of manifests) {
-  console.log(`\nManifest ${manifest.id}`);
+  section(`Manifest ${manifest.id}`);
   let targets: readonly MarketTarget[];
   try {
     targets = await marketResolver.resolveAll(manifest);
@@ -75,12 +74,15 @@ for (const manifest of manifests) {
     fail(`No live market targets (resolved ${targets.length}). Check startAt/stopAt and market dates.`);
     continue;
   }
+  if (live.length < targets.length) {
+    warn(`${targets.length - live.length} inactive target(s) skipped by startAt/stopAt.`);
+  }
   for (const target of live) {
     try {
       const preflight = await trading.resolvePreflight(target, manifest);
       assertPricePreflight(manifest, preflight);
       const ask = preflight.bestAsk === undefined ? "n/a" : String(preflight.bestAsk);
-      pass(`${target.id} ${target.outcome}: tick=${preflight.tickSize}, negRisk=${preflight.negRisk}, bestAsk=${ask} <= maxPrice=${manifest.order.maxPrice}`);
+      pass(`${target.id} ${target.outcome}: ${item("tick", preflight.tickSize)} ${item("negRisk", String(preflight.negRisk))} ${item("bestAsk", ask)} <= ${item("maxPrice", String(manifest.order.maxPrice))}`);
       probeCandidates.push({ manifest, target });
     } catch (error) {
       fail(`${target.id} ${target.outcome}: ${formatUnknownError(error)}`);
@@ -89,7 +91,7 @@ for (const manifest of manifests) {
 }
 
 if (execute) {
-  console.log("\nExecute probe (--execute)");
+  section("Execute probe");
   const candidate = probeCandidates[0];
   if (!candidate) {
     fail("No market target passed preflight, so no probe order could be placed.");
@@ -113,16 +115,18 @@ if (execute) {
   }
 }
 
-console.log(failures === 0 ? "\nPreflight passed." : `\nPreflight finished with ${failures} failure(s).`);
+console.log(failures === 0
+  ? `\n${color("Preflight passed.", "green")}`
+  : `\n${color(`Preflight finished with ${failures} failure(s).`, "red")}`);
 process.exit(failures > 0 ? 1 : 0);
 
 function confirm(): boolean {
-  console.log("Preflight will:");
-  console.log("  - build the live Polymarket CLOB client with your real credentials (derives API keys if needed)");
-  console.log("  - send a test message to your Telegram chat");
-  console.log("  - resolve each market and run order preflight (no orders placed; signals/conditions are NOT evaluated)");
+  console.log(title("Preflight will:"));
+  info("Build the live Polymarket CLOB client with your real credentials (derives API keys if needed).");
+  info("Send a test message to your Telegram chat.");
+  info("Resolve each market and run order preflight. Signals/conditions are not evaluated.");
   if (execute) {
-    console.log("  - --execute: place ONE real post-only order at the market minimum size and lowest tick, then cancel it");
+    warn("--execute places ONE real post-only order at the market minimum size and lowest tick, then cancels it.");
   }
   if (skipConfirm) {
     return true;
