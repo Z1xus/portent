@@ -1511,7 +1511,7 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "all"
+              "const": "and"
             },
             "conditions": {
               "minItems": 1,
@@ -1532,7 +1532,7 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "any"
+              "const": "or"
             },
             "conditions": {
               "minItems": 1,

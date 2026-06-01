@@ -38,9 +38,9 @@ describe("conditions", () => {
     expect(evaluateCondition(condition, event).matched).toBe(false);
   });
 
-  test("composes multiple conditions with all", () => {
+  test("composes multiple conditions with and", () => {
     const condition: ManifestCondition = {
-      type: "all",
+      type: "and",
       conditions: [
         { type: "modelIdPresent", modelId: "gpt-5.6", match: "exact" },
         { type: "jsonCompare", path: "$.release.confidence", operator: "gte", value: 0.9 },
@@ -49,9 +49,9 @@ describe("conditions", () => {
     expect(evaluateCondition(condition, event).matched).toBe(true);
   });
 
-  test("supports any and not", () => {
+  test("supports or and not", () => {
     const condition: ManifestCondition = {
-      type: "any",
+      type: "or",
       conditions: [
         { type: "textMatches", pattern: "healthcare", flags: "iu" },
         {

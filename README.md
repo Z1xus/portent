@@ -251,19 +251,23 @@ order:
 
 ## Conditions
 
-Combine leaf conditions with `all`, `any`, and `not`. They nest.
+Combine leaf conditions with `and`, `or`, and `not`. They nest.
 
 ```yaml
 condition:
-  type: all
+  type: and
   conditions:
     - type: jsonEquals
       path: $.model
       value: example-model-id
-    - type: jsonCompare
-      path: $.confidence
-      operator: gte
-      value: 0.95
+    - type: or
+      conditions:
+        - type: jsonCompare
+          path: $.confidence
+          operator: gte
+          value: 0.95
+        - type: textIncludes
+          terms: ["confirmed"]
     - type: not
       condition:
         type: textIncludes

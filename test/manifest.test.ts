@@ -41,6 +41,34 @@ describe("manifest schema", () => {
     }, "bad.yaml")).toThrow();
   });
 
+  test("parses nested and/or conditions", () => {
+    const manifest = parseManifest({
+      ...baseManifest,
+      condition: {
+        type: "and",
+        conditions: [
+          {
+            type: "modelIdPresent",
+            modelId: "gpt-5.6",
+          },
+          {
+            type: "or",
+            conditions: [
+              { type: "jsonEquals", path: "$.release.model", value: "gpt-5.6" },
+              { type: "textIncludes", terms: ["release"] },
+            ],
+          },
+        ],
+      },
+    }, "inline.yaml");
+
+    expect(manifest.condition.type).toBe("and");
+    if (manifest.condition.type !== "and") {
+      throw new Error("expected and condition");
+    }
+    expect(manifest.condition.conditions[1]?.type).toBe("or");
+  });
+
   test("parses optional bookFraction sizing", () => {
     const manifest = parseManifest({
       ...baseManifest,

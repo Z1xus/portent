@@ -23,7 +23,7 @@ signal:
       backoffMs: 1000
       maxBackoffMs: 10000
 condition:
-  type: all
+  type: and
   conditions:
     - type: jsonEquals
       path: $.status

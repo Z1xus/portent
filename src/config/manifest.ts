@@ -245,18 +245,18 @@ const LeafConditionSchema = z.discriminatedUnion("type", [
 
 export type ManifestCondition =
   | z.output<typeof LeafConditionSchema>
-  | { readonly type: "all"; readonly conditions: readonly ManifestCondition[] }
-  | { readonly type: "any"; readonly conditions: readonly ManifestCondition[] }
+  | { readonly type: "and"; readonly conditions: readonly ManifestCondition[] }
+  | { readonly type: "or"; readonly conditions: readonly ManifestCondition[] }
   | { readonly type: "not"; readonly condition: ManifestCondition };
 
 export const ConditionSchema: z.ZodType<ManifestCondition> = z.lazy(() => z.union([
   LeafConditionSchema,
   z.object({
-    type: z.literal("all"),
+    type: z.literal("and"),
     conditions: z.array(ConditionSchema).min(1),
   }),
   z.object({
-    type: z.literal("any"),
+    type: z.literal("or"),
     conditions: z.array(ConditionSchema).min(1),
   }),
   z.object({

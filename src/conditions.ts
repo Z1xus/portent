@@ -10,10 +10,10 @@ export interface ConditionResult {
 
 export function evaluateCondition(condition: ManifestCondition, event: SignalEvent): ConditionResult {
   switch (condition.type) {
-    case "all":
-      return evaluateAll(condition, event);
-    case "any":
-      return evaluateAny(condition, event);
+    case "and":
+      return evaluateAnd(condition, event);
+    case "or":
+      return evaluateOr(condition, event);
     case "not":
       return evaluateNot(condition, event);
     case "modelIdPresent":
@@ -37,26 +37,26 @@ export function evaluateCondition(condition: ManifestCondition, event: SignalEve
   }
 }
 
-function evaluateAll(
-  condition: Extract<ManifestCondition, { readonly type: "all" }>,
+function evaluateAnd(
+  condition: Extract<ManifestCondition, { readonly type: "and" }>,
   event: SignalEvent,
 ): ConditionResult {
   const results = condition.conditions.map((child) => evaluateCondition(child, event));
   const failed = results.find((result) => !result.matched);
   return failed
-    ? { matched: false, reason: `all failed: ${failed.reason}` }
-    : { matched: true, reason: `all matched: ${results.map((result) => result.reason).join("; ")}` };
+    ? { matched: false, reason: `and failed: ${failed.reason}` }
+    : { matched: true, reason: `and matched: ${results.map((result) => result.reason).join("; ")}` };
 }
 
-function evaluateAny(
-  condition: Extract<ManifestCondition, { readonly type: "any" }>,
+function evaluateOr(
+  condition: Extract<ManifestCondition, { readonly type: "or" }>,
   event: SignalEvent,
 ): ConditionResult {
   const results = condition.conditions.map((child) => evaluateCondition(child, event));
   const matched = results.find((result) => result.matched);
   return matched
-    ? { matched: true, reason: `any matched: ${matched.reason}` }
-    : { matched: false, reason: `any failed: ${results.map((result) => result.reason).join("; ")}` };
+    ? { matched: true, reason: `or matched: ${matched.reason}` }
+    : { matched: false, reason: `or failed: ${results.map((result) => result.reason).join("; ")}` };
 }
 
 function evaluateNot(
