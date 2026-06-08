@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseManifest } from "../src/config/manifest.ts";
-import { effectiveMarketStartAt, effectiveMarketStopAt, GammaMarketResolver, isBeforeMarketStart, isPastMarketStop, parsePolymarketUrl } from "../src/markets/polymarket.ts";
+import { effectiveMarketStartAt, effectiveMarketStopAt, GammaMarketResolver, isBeforeMarketStart, isPastMarketStop, MarketClosedError, parsePolymarketUrl } from "../src/markets/polymarket.ts";
 import type { Fetcher } from "../src/http.ts";
 
 describe("Polymarket market resolution", () => {
@@ -138,5 +138,41 @@ describe("Polymarket market resolution", () => {
       { id: "a", marketSlug: "market-a", tokenId: "111" },
       { id: "b", marketSlug: "market-b", tokenId: "333" },
     ]);
+  });
+
+  test("classifies closed Gamma markets", async () => {
+    const fetcher: Fetcher = async () => new Response(JSON.stringify([
+      {
+        slug: "closed-market",
+        active: false,
+        closed: true,
+        outcomes: "[\"Yes\",\"No\"]",
+        clobTokenIds: "[\"111\",\"222\"]",
+      },
+    ]));
+    const resolver = new GammaMarketResolver({ fetcher, gammaBaseUrl: "https://gamma.example" });
+    const manifest = parseManifest({
+      id: "closed-market",
+      enabled: true,
+      market: {
+        url: "https://polymarket.com/event/event-slug/closed-market",
+        outcome: "Yes",
+      },
+      signal: {
+        type: "openai.models",
+      },
+      condition: {
+        type: "modelIdPresent",
+        modelId: "gpt-5.6",
+      },
+      order: {
+        side: "BUY",
+        amountUsd: 10,
+        maxPrice: 0.9,
+        type: "FOK",
+      },
+    }, "inline.yaml");
+
+    await expect(resolver.resolve(manifest)).rejects.toBeInstanceOf(MarketClosedError);
   });
 });

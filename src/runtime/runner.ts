@@ -10,6 +10,7 @@ import {
   isBeforeMarketStart,
   isMarketTargetLive,
   isPastMarketStop,
+  MarketClosedError,
   type MarketTarget,
 } from "../markets/polymarket.ts";
 import type { Notifier } from "../notifications/telegram.ts";
@@ -169,6 +170,10 @@ async function handleMatchedManifest(
     target = await selectMarketTarget(manifest, targets, options.trading);
   } catch (error) {
     reservation.release();
+    if (error instanceof MarketClosedError) {
+      await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
+      return;
+    }
     await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     return;
   }
@@ -219,7 +224,16 @@ async function resolveGroupTiming(
   const startDates: Date[] = [];
   const stopDates: Date[] = [];
   for (const manifest of manifests) {
-    const targets = await options.marketResolver.resolveAll(manifest);
+    let targets: readonly MarketTarget[];
+    try {
+      targets = await options.marketResolver.resolveAll(manifest);
+    } catch (error) {
+      if (error instanceof MarketClosedError) {
+        await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
+        continue;
+      }
+      throw error;
+    }
     const stopAt = effectiveMarketStopAt(targets);
     if (isPastMarketStop(stopAt)) {
       await safeNotify(options.notifier, { type: "manifestExpired", manifest, stopAt });

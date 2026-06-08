@@ -61,6 +61,13 @@ const GammaEventsSchema = z.array(z.object({
 
 type GammaMarket = z.output<typeof GammaMarketSchema>;
 
+export class MarketClosedError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "MarketClosedError";
+  }
+}
+
 export class GammaMarketResolver {
   private readonly fetcher: Fetcher;
   private readonly gammaBaseUrl: string;
@@ -142,7 +149,7 @@ export function parsePolymarketUrl(value: string): MarketSlugParts {
 
 function assertTradableMarket(market: GammaMarket, slug: string): void {
   if (market.closed === true || market.archived === true) {
-    throw new Error(`Market '${slug}' is closed or archived.`);
+    throw new MarketClosedError(`Market '${slug}' is closed or archived.`);
   }
   if (market.active === false) {
     throw new Error(`Market '${slug}' is not active.`);
