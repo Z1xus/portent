@@ -40,3 +40,4 @@ order:
   once: true
 notifications:
   telegram: true
+  failureCooldownMs: 3600000

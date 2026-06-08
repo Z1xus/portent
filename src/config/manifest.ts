@@ -327,7 +327,8 @@ const BudgetSchema = z.object({
 
 const NotificationsSchema = z.object({
   telegram: z.boolean().default(true),
-}).default({ telegram: true });
+  failureCooldownMs: z.number().int().min(0).max(86_400_000).default(3_600_000),
+}).default({ telegram: true, failureCooldownMs: 3_600_000 });
 
 export const ManifestSchema = z.object({
   id: z.string().min(2).max(80),

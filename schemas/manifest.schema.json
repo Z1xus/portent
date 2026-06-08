@@ -228,17 +228,25 @@
     },
     "notifications": {
       "default": {
-        "telegram": true
+        "telegram": true,
+        "failureCooldownMs": 3600000
       },
       "type": "object",
       "properties": {
         "telegram": {
           "default": true,
           "type": "boolean"
+        },
+        "failureCooldownMs": {
+          "default": 3600000,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
         }
       },
       "required": [
-        "telegram"
+        "telegram",
+        "failureCooldownMs"
       ],
       "additionalProperties": false
     }

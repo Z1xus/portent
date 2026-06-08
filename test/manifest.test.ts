@@ -29,6 +29,7 @@ describe("manifest schema", () => {
     expect(manifest.signal.type).toBe("openai.models");
     expect(manifest.order.once).toBe(true);
     expect(manifest.notifications.telegram).toBe(true);
+    expect(manifest.notifications.failureCooldownMs).toBe(3_600_000);
   });
 
   test("rejects malformed regex conditions", () => {

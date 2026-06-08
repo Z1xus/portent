@@ -88,6 +88,9 @@ order:
   maxPrice: 0.9
   type: FOK
   once: true
+notifications:
+  telegram: true
+  failureCooldownMs: 3600000
 ```
 
 Portent resolves the Polymarket URL to the token id for `outcome`, then posts the order when the condition fires.
@@ -153,6 +156,12 @@ bun run preflight -- --execute manifests/my-strategy.yaml
 > `--execute` signs and submits a real order against the live CLOB, sized at the market's minimum order size and lowest tick (usually well under a cent), then cancels it. If the cancel fails the bid stays on the book; the command prints its order id so you can cancel it on Polymarket.
 
 Once running, the Telegram bot listens for `/status` and `/help` from `TELEGRAM_CHAT_ID`. `/status` is read-only and reports uptime, signal health, and budget usage.
+
+### Notifications
+
+`notifications.telegram: false` disables Telegram messages for a manifest.
+
+`notifications.failureCooldownMs` caps repeated order failure/skip notifications for the same manifest. The runtime still retries when the signal keeps matching and state/budget rules allow it, but it suppresses duplicate operator alerts and their paired `Condition matched` preamble until the cooldown passes. Set it to `0` for fully verbose notifications.
 
 ## Docker Compose
 

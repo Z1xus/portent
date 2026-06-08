@@ -17,6 +17,7 @@ import { setLongTimeout, sleep, type LongTimeout } from "../sleep.ts";
 import { streamSignal, type SignalContext, type SignalEvent } from "../signals/index.ts";
 import { OrderSkippedError, type TradingClient } from "../trading/polymarket.ts";
 import { formatUnknownError } from "../types.ts";
+import { RuntimeNotificationThrottle } from "./notification-throttle.ts";
 import type { JsonStateStore } from "./state.ts";
 import type { RuntimeStatusTracker } from "./status.ts";
 
@@ -30,18 +31,23 @@ export interface RuntimeOptions {
   readonly abortSignal: AbortSignal;
   readonly fetcher?: Fetcher;
   readonly status?: RuntimeStatusTracker;
+  readonly notificationThrottle?: RuntimeNotificationThrottle;
 }
 
 export async function runRuntime(options: RuntimeOptions): Promise<void> {
   const enabled = options.manifests.filter((manifest) => manifest.enabled);
+  const runtimeOptions = {
+    ...options,
+    notificationThrottle: options.notificationThrottle ?? new RuntimeNotificationThrottle(),
+  };
   options.status?.setManifests(options.manifests);
-  await safeNotify(options.notifier, { type: "startup", manifestCount: options.manifests.length, enabledCount: enabled.length });
-  for (const manifest of options.manifests) {
-    await safeNotify(options.notifier, { type: manifest.enabled ? "manifestArmed" : "manifestDisabled", manifest });
+  await safeNotify(runtimeOptions.notifier, { type: "startup", manifestCount: options.manifests.length, enabledCount: enabled.length });
+  for (const manifest of runtimeOptions.manifests) {
+    await safeNotify(runtimeOptions.notifier, { type: manifest.enabled ? "manifestArmed" : "manifestDisabled", manifest });
   }
   const tasks = [
-    ...groupManifestsBySignal(enabled).map((group) => runManifestGroup(group, options)),
-    runHeartbeat(options),
+    ...groupManifestsBySignal(enabled).map((group) => runManifestGroup(group, runtimeOptions)),
+    runHeartbeat(runtimeOptions),
   ];
   await Promise.all(tasks);
 }
@@ -163,21 +169,24 @@ async function handleMatchedManifest(
     target = await selectMarketTarget(manifest, targets, options.trading);
   } catch (error) {
     reservation.release();
-    await safeNotify(options.notifier, { type: "orderFailed", manifest, error });
+    await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     return;
   }
 
   try {
-    await safeNotify(options.notifier, { type: "conditionMatched", manifest, reason: conditionReason });
+    const shouldNotifyAttempt = options.notificationThrottle?.wouldNotifyOrderIssue(manifest) ?? true;
+    if (shouldNotifyAttempt) {
+      await safeNotify(options.notifier, { type: "conditionMatched", manifest, reason: conditionReason });
+    }
     const submission = await options.trading.submitOrder(manifest, target, event);
     await reservation.commit(submission);
     await safeNotify(options.notifier, { type: "orderSubmitted", manifest, submission });
   } catch (error) {
     reservation.release();
     if (error instanceof OrderSkippedError) {
-      await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: error.message });
+      await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
     } else {
-      await safeNotify(options.notifier, { type: "orderFailed", manifest, error });
+      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     }
   }
 }
@@ -306,4 +315,14 @@ async function safeNotify(notifier: Notifier, event: Parameters<Notifier["notify
   } catch (error) {
     console.error(`Notification failed: ${formatUnknownError(error)}`);
   }
+}
+
+async function safeNotifyOrderIssue(
+  options: Pick<RuntimeOptions, "notificationThrottle" | "notifier">,
+  event: Extract<Parameters<Notifier["notify"]>[0], { readonly type: "orderFailed" | "orderSkipped" }>,
+): Promise<void> {
+  if (options.notificationThrottle && !options.notificationThrottle.shouldNotifyOrderIssue(event.manifest)) {
+    return;
+  }
+  await safeNotify(options.notifier, event);
 }
