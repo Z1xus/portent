@@ -29,6 +29,21 @@ describe("runtime notification throttle", () => {
     expect(throttle.shouldNotifyOrderIssue(manifest, new Date("2026-06-08T10:00:00Z"))).toBe(true);
     expect(throttle.shouldNotifyOrderIssue(manifest, new Date("2026-06-08T10:00:01Z"))).toBe(true);
   });
+
+  test("suppresses repeated recoverable error notifications within the cooldown", () => {
+    const throttle = new RuntimeNotificationThrottle();
+
+    expect(throttle.shouldNotifyRecoverableError("signal-group", 60_000, new Date("2026-06-08T10:00:00Z"))).toBe(true);
+    expect(throttle.shouldNotifyRecoverableError("signal-group", 60_000, new Date("2026-06-08T10:00:30Z"))).toBe(false);
+    expect(throttle.shouldNotifyRecoverableError("signal-group", 60_000, new Date("2026-06-08T10:01:00Z"))).toBe(true);
+  });
+
+  test("can disable recoverable error throttling", () => {
+    const throttle = new RuntimeNotificationThrottle();
+
+    expect(throttle.shouldNotifyRecoverableError("signal-group", 0, new Date("2026-06-08T10:00:00Z"))).toBe(true);
+    expect(throttle.shouldNotifyRecoverableError("signal-group", 0, new Date("2026-06-08T10:00:01Z"))).toBe(true);
+  });
 });
 
 const baseManifest = {

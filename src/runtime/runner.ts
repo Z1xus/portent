@@ -109,7 +109,7 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
     } catch (error) {
       if (!options.abortSignal.aborted) {
         options.status?.groupError(group.key, error);
-        await safeNotify(options.notifier, { type: "recoverableError", error });
+        await safeNotifyRecoverableError(options, group, error);
         await sleep(15_000, options.abortSignal);
       }
     } finally {
@@ -232,7 +232,8 @@ async function resolveGroupTiming(
         await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
         continue;
       }
-      throw error;
+      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
+      continue;
     }
     const stopAt = effectiveMarketStopAt(targets);
     if (isPastMarketStop(stopAt)) {
@@ -318,7 +319,7 @@ async function runHeartbeat(options: RuntimeOptions): Promise<void> {
     try {
       await options.trading.heartbeat();
     } catch (error) {
-      await safeNotify(options.notifier, { type: "recoverableError", error });
+      await safeNotifyRecoverableError(options, { key: "heartbeat", manifests: options.manifests }, error);
     }
   }
 }
@@ -339,4 +340,26 @@ async function safeNotifyOrderIssue(
     return;
   }
   await safeNotify(options.notifier, event);
+}
+
+async function safeNotifyRecoverableError(
+  options: Pick<RuntimeOptions, "notificationThrottle" | "notifier">,
+  group: Pick<ManifestGroup, "key" | "manifests">,
+  error: unknown,
+): Promise<void> {
+  const cooldownMs = recoverableErrorCooldownMs(group.manifests);
+  if (options.notificationThrottle && !options.notificationThrottle.shouldNotifyRecoverableError(group.key, cooldownMs)) {
+    return;
+  }
+  await safeNotify(options.notifier, { type: "recoverableError", error });
+}
+
+function recoverableErrorCooldownMs(manifests: readonly Manifest[]): number {
+  if (manifests.length === 0) {
+    return 3_600_000;
+  }
+  if (manifests.some((manifest) => manifest.notifications.failureCooldownMs === 0)) {
+    return 0;
+  }
+  return Math.min(...manifests.map((manifest) => manifest.notifications.failureCooldownMs));
 }
