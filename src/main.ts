@@ -52,9 +52,14 @@ async function main(): Promise<void> {
 }
 
 function installShutdownHandlers(abortController: AbortController): void {
-  const shutdown = (): void => abortController.abort();
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  const shutdown = (): void => {
+    if (abortController.signal.aborted) {
+      process.exit(1);
+    }
+    abortController.abort();
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 await main();
