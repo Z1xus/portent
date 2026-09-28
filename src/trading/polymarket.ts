@@ -124,7 +124,11 @@ export async function deriveOrCreateApiKeyCreds(
   }
 }
 
+const WARM_PING_INTERVAL_MS = 5_000;
+
 export class PolymarketTradingClient implements TradingClient {
+  private lastPingAt = 0;
+
   public constructor(private readonly client: ClobClient) {}
 
   public async resolvePreflight(target: MarketTarget, manifest: Manifest): Promise<OrderPreflight> {
@@ -144,9 +148,15 @@ export class PolymarketTradingClient implements TradingClient {
   }
 
   public async warm(target: MarketTarget): Promise<void> {
+    const now = Date.now();
+    const ping = now - this.lastPingAt >= WARM_PING_INTERVAL_MS;
+    if (ping) {
+      this.lastPingAt = now;
+    }
     await Promise.all([
       this.client.getTickSize(target.tokenId),
       this.client.getNegRisk(target.tokenId),
+      ...(ping ? [this.client.getServerTime()] : []),
     ]);
   }
 
