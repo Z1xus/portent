@@ -39,17 +39,22 @@ export interface TelegramCommandLoopOptions {
 export async function runTelegramCommandLoop(options: TelegramCommandLoopOptions): Promise<void> {
   const fetcher = options.fetcher ?? fetch;
   let offset = 0;
+  let failures = 0;
   while (!options.abortSignal.aborted) {
     try {
       const updates = await getUpdates(fetcher, options.env.botToken, offset, options.abortSignal);
+      failures = 0;
       for (const update of updates) {
         offset = Math.max(offset, update.update_id + 1);
         await handleUpdate(update, options, fetcher);
       }
     } catch (error) {
       if (!options.abortSignal.aborted) {
-        console.error(`Telegram command polling failed: ${formatUnknownError(error)}`);
-        await sleep(10_000, options.abortSignal);
+        failures += 1;
+        if (failures === 1 || failures % 10 === 0) {
+          console.error(`Telegram command polling failed (${failures} in a row): ${formatUnknownError(error)}`);
+        }
+        await sleep(Math.min(1_000 * 2 ** (failures - 1), 60_000), options.abortSignal);
       }
     }
   }
