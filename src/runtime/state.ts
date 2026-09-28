@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Manifest } from "../config/manifest.ts";
@@ -233,7 +233,13 @@ export class JsonStateStore implements SignalState {
 
   private async flushState(): Promise<void> {
     const tmpPath = `${this.statePath}.tmp`;
-    await writeFile(tmpPath, `${JSON.stringify(this.data, null, 2)}\n`);
+    const handle = await open(tmpPath, "w");
+    try {
+      await handle.writeFile(`${JSON.stringify(this.data, null, 2)}\n`);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await rename(tmpPath, this.statePath);
   }
 }
