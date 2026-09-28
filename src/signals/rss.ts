@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ManifestSignal } from "../config/manifest.ts";
-import { fetchText } from "../text-http.ts";
+import { fetchText } from "../http.ts";
 import { sleep } from "../sleep.ts";
 import { asSignalEventId } from "../types.ts";
 import { resolveConfiguredHeaders } from "./http-auth.ts";

@@ -42,11 +42,24 @@ export async function fetchJsonRaw(
   url: string,
   options: FetchJsonOptions = {},
 ): Promise<unknown> {
+  const text = await withRetry(options, () => fetchTextOnce(fetcher, url, options, true));
+  return text.length === 0 ? null : JSON.parse(text) as unknown;
+}
+
+export async function fetchText(
+  fetcher: Fetcher,
+  url: string,
+  options: FetchJsonOptions = {},
+): Promise<string> {
+  return withRetry(options, () => fetchTextOnce(fetcher, url, options, false));
+}
+
+async function withRetry<T>(options: FetchJsonOptions, attemptOnce: () => Promise<T>): Promise<T> {
   const retry = options.retry ?? { attempts: 1, backoffMs: 0, maxBackoffMs: 0 };
   let lastError: unknown;
   for (let attempt = 1; attempt <= retry.attempts; attempt += 1) {
     try {
-      return await fetchJsonRawOnce(fetcher, url, options);
+      return await attemptOnce();
     } catch (error) {
       lastError = error;
       if (options.signal?.aborted || attempt >= retry.attempts || !isRetryable(error)) {
@@ -58,11 +71,12 @@ export async function fetchJsonRaw(
   throw lastError;
 }
 
-async function fetchJsonRawOnce(
+async function fetchTextOnce(
   fetcher: Fetcher,
   url: string,
   options: FetchJsonOptions,
-): Promise<unknown> {
+  json: boolean,
+): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error(`Request timed out after ${options.timeoutMs ?? 30_000}ms`)), options.timeoutMs ?? 30_000);
   const onParentAbort = (): void => controller.abort(options.signal?.reason);
@@ -70,8 +84,10 @@ async function fetchJsonRawOnce(
   try {
     const init: RequestInit = {
       method: options.method ?? "GET",
-      headers: jsonHeaders(options.headers, options.body !== undefined),
       signal: controller.signal,
+      ...(json
+        ? { headers: jsonHeaders(options.headers, options.body !== undefined) }
+        : options.headers === undefined ? {} : { headers: options.headers }),
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     };
     const response = await fetcher(url, init);
@@ -79,7 +95,7 @@ async function fetchJsonRawOnce(
     if (!response.ok) {
       throw new HttpError(`HTTP ${response.status} from ${redactUrl(url)}`, response.status, text);
     }
-    return text.length === 0 ? null : JSON.parse(text) as unknown;
+    return text;
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", onParentAbort);
