@@ -14,7 +14,7 @@ import {
   type MarketTarget,
 } from "../markets/polymarket.ts";
 import { QueuedNotifier } from "../notifications/queue.ts";
-import type { Notifier } from "../notifications/telegram.ts";
+import { formatTime, type Notifier } from "../notifications/telegram.ts";
 import { setLongTimeout, sleep, type LongTimeout } from "../sleep.ts";
 import { streamSignal, type SignalContext, type SignalEvent } from "../signals/index.ts";
 import { OrderSkippedError, type OrderSubmission, type TradingClient } from "../trading/polymarket.ts";
@@ -46,10 +46,7 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
   };
   options.status?.setManifests(options.manifests);
   try {
-    await safeNotify(notifier, { type: "startup", manifestCount: options.manifests.length, enabledCount: enabled.length });
-    for (const manifest of runtimeOptions.manifests) {
-      await safeNotify(notifier, { type: manifest.enabled ? "manifestArmed" : "manifestDisabled", manifest });
-    }
+    await safeNotify(notifier, { type: "startup", manifests: options.manifests });
     const tasks = [
       ...groupManifestsBySignal(enabled).map((group) => runManifestGroup(group, runtimeOptions)),
       runHeartbeat(runtimeOptions),
@@ -99,7 +96,8 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
       if (manifests.length === 0) {
         await safeNotify(options.notifier, {
           type: "recoverableError",
-          error: new Error(`Signal group ${group.signal.type} stopped: no active manifests. ids=${group.manifests.map((manifest) => manifest.id).join(",")}`),
+          title: `${group.signal.type} signal stopped`,
+          error: new Error(`No active manifests left: ${group.manifests.map((manifest) => manifest.id).join(", ")}.`),
         });
         return;
       }
@@ -127,7 +125,7 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
       if (!options.abortSignal.aborted) {
         failures += 1;
         options.status?.groupError(group.key, error);
-        await safeNotifyRecoverableError(options, group, error);
+        await safeNotifyRecoverableError(options, group, `${group.signal.type} signal failing`, error);
         await sleep(retryDelayMs(failures), options.abortSignal);
       }
     } finally {
@@ -191,7 +189,7 @@ async function handleMatchedManifest(
   const reservation = options.state.reserveExecution(manifest, event);
   if (!reservation.allowed) {
     if (shouldNotifySkippedReservation(reservation.reason)) {
-      await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: reservation.reason });
+      await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: reservation.reason });
     }
     return;
   }
@@ -202,20 +200,20 @@ async function handleMatchedManifest(
     const freshStopAt = effectiveMarketStopAt(targets);
     if (isPastMarketStop(freshStopAt)) {
       reservation.release();
-      await safeNotify(options.notifier, { type: "manifestExpired", manifest, stopAt: freshStopAt });
+      await safeNotify(options.notifier, { type: "manifestEnded", manifest, stopAt: freshStopAt });
       return;
     }
     const freshStartAt = effectiveMarketStartAt(targets);
     if (isBeforeMarketStart(freshStartAt)) {
       reservation.release();
-      await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: `market has not started; startAt=${freshStartAt.toISOString()}` });
+      await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: `Market opens at ${formatTime(freshStartAt)}.` });
       return;
     }
     target = await selectMarketTarget(manifest, targets, options.trading);
   } catch (error) {
     reservation.release();
     if (error instanceof MarketClosedError) {
-      await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
+      await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
       return;
     }
     await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
@@ -244,11 +242,12 @@ async function handleMatchedManifest(
   } catch (error) {
     await safeNotify(options.notifier, {
       type: "recoverableError",
+      title: `${manifest.id} order not saved`,
       manifest,
-      error: new Error(`Order ${submission.orderId ?? "unknown"} was placed but could not be saved to state: ${formatUnknownError(error)}`),
+      error: new Error(`Order ${submission.orderId ?? "unknown"} was placed, but state was not saved. It can repeat after a restart. ${formatUnknownError(error)}`),
     });
   }
-  await safeNotify(options.notifier, { type: "orderSubmitted", manifest, submission });
+  await safeNotify(options.notifier, { type: "orderSubmitted", manifest, target, submission });
 }
 
 function shouldNotifySkippedReservation(reason: string): boolean {
@@ -257,6 +256,7 @@ function shouldNotifySkippedReservation(reason: string): boolean {
     || reason.includes("order.once already executed")
     || reason.includes("order.once already reserved")
     || reason.includes("repeat cooldown active")
+    || reason.includes("repeat.maxExecutions")
   );
 }
 
@@ -280,10 +280,15 @@ async function resolveGroupTiming(
       return { manifest, targets: await options.marketResolver.resolveAll(manifest) };
     } catch (error) {
       if (error instanceof MarketClosedError) {
-        await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
+        await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
         return undefined;
       }
-      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
+      await safeNotifyRecoverableError(
+        options,
+        { key: `market:${manifest.id}`, manifests: [manifest] },
+        `${manifest.id} market lookup failing`,
+        error,
+      );
       return { manifest, targets: [] };
     }
   }));
@@ -296,7 +301,7 @@ async function resolveGroupTiming(
     }
     const stopAt = effectiveMarketStopAt(item.targets);
     if (isPastMarketStop(stopAt)) {
-      await safeNotify(options.notifier, { type: "manifestExpired", manifest: item.manifest, stopAt });
+      await safeNotify(options.notifier, { type: "manifestEnded", manifest: item.manifest, stopAt });
       continue;
     }
     const startAt = effectiveMarketStartAt(item.targets);
@@ -378,7 +383,7 @@ async function runHeartbeat(options: RuntimeOptions): Promise<void> {
     try {
       await heartbeatWithRetry(options);
     } catch (error) {
-      await safeNotifyRecoverableError(options, { key: "heartbeat", manifests: options.manifests }, error);
+      await safeNotifyRecoverableError(options, { key: "heartbeat", manifests: options.manifests }, "Polymarket heartbeat failing", error);
     }
   }
 }
@@ -413,18 +418,18 @@ async function runMarketRefresh(manifests: readonly Manifest[], options: Runtime
       } catch (error) {
         if (error instanceof MarketClosedError) {
           if (live.delete(id)) {
-            await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: error.message });
+            await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
           }
           return;
         }
         const count = (failures.get(id) ?? 0) + 1;
         failures.set(id, count);
         if (count >= 3) {
-          const cause = formatUnknownError(error);
           await safeNotifyRecoverableError(
             options,
             { key: `market:${id}`, manifests: [manifest] },
-            new Error(`${id}: market lookup keeps failing. ${cause}`),
+            `${id} market lookup failing`,
+            error,
           );
         }
       }
@@ -454,13 +459,14 @@ async function safeNotifyOrderIssue(
 async function safeNotifyRecoverableError(
   options: Pick<RuntimeOptions, "notificationThrottle" | "notifier">,
   group: Pick<ManifestGroup, "key" | "manifests">,
+  title: string,
   error: unknown,
 ): Promise<void> {
   const cooldownMs = recoverableErrorCooldownMs(group.manifests);
   if (options.notificationThrottle && !options.notificationThrottle.shouldNotifyRecoverableError(group.key, cooldownMs)) {
     return;
   }
-  await safeNotify(options.notifier, { type: "recoverableError", error });
+  await safeNotify(options.notifier, { type: "recoverableError", title, error });
 }
 
 function recoverableErrorCooldownMs(manifests: readonly Manifest[]): number {

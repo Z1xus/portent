@@ -2,21 +2,26 @@ import { z } from "zod";
 import type { RuntimeEnv } from "../config/env.ts";
 import { manifestMarkets, type Manifest } from "../config/manifest.ts";
 import { fetchJson, type Fetcher } from "../http.ts";
+import type { MarketTarget } from "../markets/polymarket.ts";
 import type { OrderSubmission } from "../trading/polymarket.ts";
 import { formatUnknownError } from "../types.ts";
 
 export type NotificationEvent =
-  | { readonly type: "startup"; readonly manifestCount: number; readonly enabledCount: number }
+  | { readonly type: "startup"; readonly manifests: readonly Manifest[] }
   | { readonly type: "preflight" }
-  | { readonly type: "manifestArmed"; readonly manifest: Manifest }
-  | { readonly type: "manifestDisabled"; readonly manifest: Manifest }
-  | { readonly type: "manifestExpired"; readonly manifest: Manifest; readonly stopAt: Date }
+  | { readonly type: "manifestEnded"; readonly manifest: Manifest; readonly stopAt?: Date; readonly reason?: string }
   | { readonly type: "conditionMatched"; readonly manifest: Manifest; readonly reason: string }
-  | { readonly type: "orderSubmitted"; readonly manifest: Manifest; readonly submission: OrderSubmission }
+  | { readonly type: "orderSubmitted"; readonly manifest: Manifest; readonly target: MarketTarget; readonly submission: OrderSubmission }
   | { readonly type: "orderSkipped"; readonly manifest: Manifest; readonly reason: string }
   | { readonly type: "orderFailed"; readonly manifest: Manifest; readonly error: unknown }
-  | { readonly type: "recoverableError"; readonly manifest?: Manifest; readonly error: unknown }
+  | { readonly type: "recoverableError"; readonly title: string; readonly manifest?: Manifest; readonly error: unknown }
   | { readonly type: "fatal"; readonly error: unknown };
+
+export interface FormattedNotification {
+  readonly title: string;
+  readonly lines: readonly string[];
+  readonly silent: boolean;
+}
 
 export interface Notifier {
   notify(event: NotificationEvent): Promise<void>;
@@ -32,7 +37,7 @@ export class CompositeNotifier implements Notifier {
 
 export class ConsoleNotifier implements Notifier {
   public async notify(event: NotificationEvent): Promise<void> {
-    console.log(formatNotification(event));
+    console.log(renderPlain(formatNotification(event)));
   }
 }
 
@@ -55,12 +60,15 @@ export class TelegramNotifier implements Notifier {
     if ("manifest" in event && event.manifest.notifications.telegram === false) {
       return;
     }
+    const message = formatNotification(event);
     const url = `https://api.telegram.org/bot${this.token}/sendMessage`;
     const response = await fetchJson(this.fetcher, url, TelegramResponseSchema, {
       method: "POST",
       body: {
         chat_id: this.chatId,
-        text: formatNotification(event),
+        text: renderTelegramHtml(message),
+        parse_mode: "HTML",
+        disable_notification: message.silent,
         disable_web_page_preview: true,
       },
       timeoutMs: 10_000,
@@ -80,37 +88,89 @@ export class MemoryNotifier implements Notifier {
   }
 }
 
-export function formatNotification(event: NotificationEvent): string {
+export function formatNotification(event: NotificationEvent): FormattedNotification {
   switch (event.type) {
     case "startup":
-      return `Portent started. manifests=${event.manifestCount}, enabled=${event.enabledCount}`;
+      return formatStartup(event.manifests);
     case "preflight":
-      return "Portent preflight check. If you can read this, Telegram alerts are wired up correctly.";
-    case "manifestArmed":
-      return `Manifest armed: ${event.manifest.id} -> ${formatManifestMarkets(event.manifest)}`;
-    case "manifestDisabled":
-      return `Manifest disabled: ${event.manifest.id}`;
-    case "manifestExpired":
-      return `Manifest expired: ${event.manifest.id}. stopAt=${event.stopAt.toISOString()}`;
+      return loud("✅ Telegram alerts work", ["This is a Portent preflight test."]);
+    case "manifestEnded":
+      return silent(`⏹ ${event.manifest.id} ended`, [
+        event.reason ?? (event.stopAt ? `Market window closed at ${formatTime(event.stopAt)}.` : "Market closed."),
+      ]);
     case "conditionMatched":
-      return `Condition matched: ${event.manifest.id}. ${event.reason}`;
+      return silent(`🎯 ${event.manifest.id} matched`, [event.reason, "Placing order…"]);
     case "orderSubmitted":
-      return `Order submitted: ${event.manifest.id}. status=${event.submission.status}, success=${event.submission.success}, orderId=${event.submission.orderId ?? "unknown"}`;
+      return formatOrderSubmitted(event.manifest, event.target, event.submission);
     case "orderSkipped":
-      return `Order skipped: ${event.manifest.id}. ${event.reason}`;
+      return silent(`⏭ ${event.manifest.id} skipped`, [event.reason]);
     case "orderFailed":
-      return `Order failed: ${event.manifest.id}. ${formatUnknownError(event.error)}`;
+      return loud(`❌ ${event.manifest.id} order failed`, [formatUnknownError(event.error)]);
     case "recoverableError":
-      return event.manifest
-        ? `Recoverable error in ${event.manifest.id}: ${formatUnknownError(event.error)}`
-        : `Recoverable error: ${formatUnknownError(event.error)}`;
+      return loud(`⚠️ ${event.title}`, [formatUnknownError(event.error)]);
     case "fatal":
-      return `Portent fatal shutdown: ${formatUnknownError(event.error)}`;
+      return loud("🛑 Portent stopped", [formatUnknownError(event.error)]);
   }
 }
 
-function formatManifestMarkets(manifest: Manifest): string {
-  return manifestMarkets(manifest)
-    .map((market) => `${market.id ? `${market.id}:` : ""}${market.outcome} on ${market.url}`)
-    .join(", ");
+export function renderPlain(message: FormattedNotification): string {
+  return [message.title, ...message.lines].join(" | ");
+}
+
+export function renderTelegramHtml(message: FormattedNotification): string {
+  return [`<b>${escapeHtml(message.title)}</b>`, ...message.lines.map(escapeHtml)].join("\n");
+}
+
+function formatStartup(manifests: readonly Manifest[]): FormattedNotification {
+  const enabled = manifests.filter((manifest) => manifest.enabled);
+  if (enabled.length === 0) {
+    return silent("▶️ Portent started", [`No manifests enabled (${manifests.length} loaded).`]);
+  }
+  return silent("▶️ Portent started", [
+    `Watching ${enabled.length} of ${manifests.length} manifests:`,
+    ...enabled.map((manifest) => `• ${manifest.id}: ${formatManifestOrder(manifest)}`),
+  ]);
+}
+
+function formatOrderSubmitted(manifest: Manifest, target: MarketTarget, submission: OrderSubmission): FormattedNotification {
+  const lines = [
+    target.question ?? target.marketSlug,
+    `${formatUsd(submission.amountUsd ?? manifest.order.amountUsd)} of ${target.outcome} at ≤ ${manifest.order.maxPrice}`,
+    `Order ${submission.orderId ?? "id unknown"} (${submission.status})`,
+  ];
+  return submission.success
+    ? loud(`✅ ${manifest.id} bought ${target.outcome}`, lines)
+    : loud(`⚠️ ${manifest.id} order not confirmed`, [...lines, "Check the order on Polymarket."]);
+}
+
+function formatManifestOrder(manifest: Manifest): string {
+  const markets = manifestMarkets(manifest);
+  const outcomes = Array.from(new Set(markets.map((market) => market.outcome))).join("/");
+  const slugs = markets.map((market) => market.id ?? marketSlugFromUrl(market.url)).join(", ");
+  return `${outcomes} on ${slugs}, ${formatUsd(manifest.order.amountUsd)} at ≤ ${manifest.order.maxPrice}`;
+}
+
+function marketSlugFromUrl(url: string): string {
+  const segments = new URL(url).pathname.split("/").filter((segment) => segment.length > 0);
+  return segments.at(-1) ?? url;
+}
+
+export function formatTime(date: Date): string {
+  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function loud(title: string, lines: readonly string[]): FormattedNotification {
+  return { title, lines, silent: false };
+}
+
+function silent(title: string, lines: readonly string[]): FormattedNotification {
+  return { title, lines, silent: true };
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
