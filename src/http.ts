@@ -77,7 +77,7 @@ async function fetchJsonRawOnce(
     const response = await fetcher(url, init);
     const text = await response.text();
     if (!response.ok) {
-      throw new HttpError(`HTTP ${response.status} from ${url}`, response.status, text);
+      throw new HttpError(`HTTP ${response.status} from ${redactUrl(url)}`, response.status, text);
     }
     return text.length === 0 ? null : JSON.parse(text) as unknown;
   } finally {
@@ -101,7 +101,16 @@ function isRetryable(error: unknown): boolean {
   if (error instanceof HttpError) {
     return error.status === 408 || error.status === 429 || error.status >= 500;
   }
-  return error instanceof TypeError || error instanceof DOMException || error instanceof Error && /timed out|abort/i.test(error.message);
+  return !(error instanceof SyntaxError);
+}
+
+function redactUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname.replace(/\/bot[^/]+/u, "/bot***")}`;
+  } catch {
+    return "request";
+  }
 }
 
 function wait(ms: number, signal: AbortSignal | undefined): Promise<void> {

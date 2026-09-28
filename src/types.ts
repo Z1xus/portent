@@ -1,3 +1,5 @@
+import { ZodError } from "zod";
+
 export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 
 export type HexAddress = Brand<`0x${string}`, "HexAddress">;
@@ -66,6 +68,9 @@ export function assertNever(value: never): never {
 }
 
 export function formatUnknownError(error: unknown): string {
+  if (error instanceof ZodError) {
+    return error.issues.map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`).join("; ");
+  }
   if (error instanceof Error) {
     return error.message;
   }
