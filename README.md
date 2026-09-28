@@ -188,6 +188,8 @@ docker compose down
 
 The Compose file mounts `manifests/` read-only and `.portent/` read-write. It does not publish any ports. Secrets and live manifests are kept out of the image build context by `.dockerignore`.
 
+The image holds only the bundled app from `bun run build`, not `node_modules`. Put host-specific settings, such as `network_mode: host`, in a `compose.override.yaml` next to `compose.yaml`. Compose merges it on its own, and git ignores it.
+
 ### Podman
 
 Both `Dockerfile` and `compose.yaml` also work with Podman, just swap the command:

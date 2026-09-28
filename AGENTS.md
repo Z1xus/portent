@@ -13,6 +13,7 @@ bun test
 bun run simulate -- manifests/my-strategy.yaml
 bun run preflight -- manifests/my-strategy.yaml
 bun run schema
+bun run build
 ```
 
 `bun run preflight` is an optional live check. Read-only by default: it builds the real CLOB client, posts a heartbeat, sends a test Telegram message, and runs order preflight against resolved markets. It checks that markets resolve and are within their `startAt`/`stopAt` window; it does not evaluate signals/conditions (that's `simulate`) and does not check wallet balance or allowances. With `--execute` it places one post-only probe order at the market minimum size and lowest tick, then cancels it; a cancel failure is returned as data so the command can report the live order id rather than masking a placement success as a failure. The probe lives on the concrete `PolymarketTradingClient` (`probeOrder`), deliberately not on the `TradingClient` interface, so the runtime and test fakes stay minimal.
@@ -81,6 +82,9 @@ Do not add a database, queue, scheduler, plugin system, or strategy engine unles
 `src/http.ts`
 : Typed HTTP boundary with Zod parsing, retry, timeout, and abort behavior.
 
+`scripts/build.ts`
+: Bundles the app and CLIs into `dist/` with a `dist/package.json`, so `bun run start` and the CLI commands work inside the image. Add new CLIs here too.
+
 `src/sleep.ts`
 : Abortable and long-delay-safe timers. Use this instead of raw `setTimeout` for runtime waits.
 
@@ -125,7 +129,7 @@ The core path is in `src/runtime/runner.ts`.
 
 `GammaMarketResolver` caches Gamma markets for `cacheTtlMs` and a background loop in the runtime refreshes them and warms CLOB tick size and neg-risk data, so the order path avoids network round trips. Only successful lookups are cached. A commit failure after a placed order is reported as a recoverable error and never releases the reservation.
 
-The market refresh loop also reports health. Three failed refreshes in a row for a manifest send one throttled recoverable error, and a market that closes after being live sends one skipped notice. A group that ends with no active manifests sends a silent `signalStopped` notice. Only closed or expired manifests leave a group, and each one already sent its own notice.
+The market refresh loop also reports health. Three failed refreshes in a row for a manifest send one throttled recoverable error, and a market that closes after being live sends one silent `manifestEnded` notice. A group that ends with no active manifests sends a silent `signalStopped` notice. Only closed or expired manifests leave a group, and each one already sent its own notice.
 
 A transient market lookup failure at group start must not disable a manifest. Only closed or expired markets drop a manifest from its group.
 
