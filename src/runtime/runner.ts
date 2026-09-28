@@ -97,6 +97,10 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
       const timing = await resolveGroupTiming(manifests, options);
       manifests = timing.activeManifests;
       if (manifests.length === 0) {
+        await safeNotify(options.notifier, {
+          type: "recoverableError",
+          error: new Error(`Signal group ${group.signal.type} stopped: no active manifests. ids=${group.manifests.map((manifest) => manifest.id).join(",")}`),
+        });
         return;
       }
       if (isBeforeMarketStart(timing.startAt)) {
@@ -395,11 +399,35 @@ async function heartbeatWithRetry(options: RuntimeOptions): Promise<void> {
 
 async function runMarketRefresh(manifests: readonly Manifest[], options: RuntimeOptions): Promise<void> {
   const intervalMs = Math.max(1_000, Math.floor(options.marketResolver.cacheTtlMs / 3));
+  const failures = new Map<string, number>();
+  const live = new Set<string>();
   while (!options.abortSignal.aborted) {
     await options.marketResolver.refresh(manifests);
-    await Promise.allSettled(manifests.map(async (manifest) => {
-      const targets = await options.marketResolver.resolveAll(manifest);
-      await Promise.all(targets.map((target) => options.trading.warm?.(target)));
+    await Promise.all(manifests.map(async (manifest) => {
+      const id = String(manifest.id);
+      try {
+        const targets = await options.marketResolver.resolveAll(manifest);
+        failures.delete(id);
+        live.add(id);
+        await Promise.allSettled(targets.map((target) => options.trading.warm?.(target)));
+      } catch (error) {
+        if (error instanceof MarketClosedError) {
+          if (live.delete(id)) {
+            await safeNotify(options.notifier, { type: "orderSkipped", manifest, reason: error.message });
+          }
+          return;
+        }
+        const count = (failures.get(id) ?? 0) + 1;
+        failures.set(id, count);
+        if (count >= 3) {
+          const cause = formatUnknownError(error);
+          await safeNotifyRecoverableError(
+            options,
+            { key: `market:${id}`, manifests: [manifest] },
+            new Error(`${id}: market lookup keeps failing. ${cause}`),
+          );
+        }
+      }
     }));
     await sleep(intervalMs, options.abortSignal);
   }

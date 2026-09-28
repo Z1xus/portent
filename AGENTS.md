@@ -125,6 +125,8 @@ The core path is in `src/runtime/runner.ts`.
 
 `GammaMarketResolver` caches Gamma markets for `cacheTtlMs` and a background loop in the runtime refreshes them and warms CLOB tick size and neg-risk data, so the order path avoids network round trips. Only successful lookups are cached. A commit failure after a placed order is reported as a recoverable error and never releases the reservation.
 
+The market refresh loop also reports health. Three failed refreshes in a row for a manifest send one throttled recoverable error, and a market that closes after being live sends one skipped notice. A group that ends with no active manifests sends a recoverable error.
+
 A transient market lookup failure at group start must not disable a manifest. Only closed or expired markets drop a manifest from its group.
 
 `conditionMatched` should not fire on every polling match. It should fire only when the manifest is past dedupe/budget/timing checks and is about to submit.
@@ -235,6 +237,8 @@ Every order goes through preflight:
 - best ask when needed
 
 `assertPricePreflight()` protects `maxPrice`. Keep price checks in trading, not in the runtime.
+
+Fees: Portent has no fee logic of its own. The CLOB SDK adds taker fees on top of the order amount and trims the amount only when the wallet balance cannot cover it. Budget accounting and `order.sizing` depth ignore fees, so spend on fee-enabled markets can exceed `amountUsd` by the fee. Verify with `bun run preflight -- --execute` before trusting FAK sweeps there.
 
 The runtime submits one order per manifest execution. Do not make `TradingClient.submitOrder()` secretly split an order.
 
