@@ -161,9 +161,11 @@ Once running, the Telegram bot listens for `/status` and `/help` from `TELEGRAM_
 
 ### Notifications
 
+Routine messages arrive silently: the startup summary, condition matches, skipped orders, and manifests that end with their market. Placed orders, failed orders, runtime errors, and shutdowns arrive with sound.
+
 `notifications.telegram: false` disables Telegram messages for a manifest.
 
-`notifications.failureCooldownMs` caps repeated order failure/skip notifications for the same manifest. The runtime still retries when the signal keeps matching and state/budget rules allow it, but it suppresses duplicate operator alerts and their paired `Condition matched` preamble until the cooldown passes. Set it to `0` for fully verbose notifications.
+`notifications.failureCooldownMs` caps repeated order failure/skip notifications for the same manifest. The runtime still retries when the signal keeps matching and state/budget rules allow it, but it suppresses duplicate operator alerts and the paired condition-match message until the cooldown passes. Set it to `0` for fully verbose notifications.
 
 ## Docker Compose
 

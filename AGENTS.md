@@ -250,15 +250,16 @@ Notifications are operational events, not logs.
 
 Expected high-value notifications:
 
-- startup summary
-- manifest armed/disabled
-- manifest expired
+- startup summary (one message that lists the enabled manifests)
+- manifest ended (market expired or closed)
 - condition matched when an order is about to submit
 - order submitted
 - order failed
 - non-routine skipped orders
 - recoverable runtime errors
 - fatal shutdown
+
+`formatNotification()` marks each event silent or loud. Silent events use Telegram `disable_notification`. Keep routine events silent: startup, manifest ended, condition matched, and skipped orders. Only real outcomes and failures should make a sound. Every `recoverableError` needs a short `title` that names what failed. Telegram messages use HTML parse mode, so pass dynamic text through `escapeHtml()`.
 
 Avoid notification spam from polling. Repeated already-executed, `order.once`, and cooldown skips should stay quiet unless the user asks for verbose diagnostics.
 
