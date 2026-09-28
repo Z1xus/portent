@@ -125,6 +125,8 @@ The core path is in `src/runtime/runner.ts`.
 
 `GammaMarketResolver` caches Gamma markets for `cacheTtlMs` and a background loop in the runtime refreshes them and warms CLOB tick size and neg-risk data, so the order path avoids network round trips. Only successful lookups are cached. A commit failure after a placed order is reported as a recoverable error and never releases the reservation.
 
+A transient market lookup failure at group start must not disable a manifest. Only closed or expired markets drop a manifest from its group.
+
 `conditionMatched` should not fire on every polling match. It should fire only when the manifest is past dedupe/budget/timing checks and is about to submit.
 
 Signal grouping is deliberately by `signal`, not by `{ signal, condition }`. If two manifests poll the same API with different conditions, they must share one signal loop. Keep conditions per manifest.
