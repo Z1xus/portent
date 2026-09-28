@@ -171,6 +171,6 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }

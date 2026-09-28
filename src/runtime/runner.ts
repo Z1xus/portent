@@ -90,7 +90,7 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
   while (!options.abortSignal.aborted) {
     let scopedAbort: ScopedAbort | undefined;
     try {
-      options.status?.groupStarted(group.key, manifests, group.signal.type, `${conditionCount(manifests)} condition(s)`);
+      options.status?.groupStarted(group.key, manifests, group.signal.type);
       const timing = await resolveGroupTiming(manifests, options);
       manifests = timing.activeManifests;
       if (manifests.length === 0) {
@@ -265,10 +265,6 @@ function orderedManifests(manifests: readonly Manifest[]): readonly Manifest[] {
     const priority = (left.budget?.priority ?? 100) - (right.budget?.priority ?? 100);
     return priority === 0 ? String(left.id).localeCompare(String(right.id)) : priority;
   });
-}
-
-function conditionCount(manifests: readonly Manifest[]): number {
-  return new Set(manifests.map((manifest) => stableJsonStringify(manifest.condition))).size;
 }
 
 async function resolveGroupTiming(

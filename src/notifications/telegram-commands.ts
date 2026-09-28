@@ -6,6 +6,7 @@ import { sleep } from "../sleep.ts";
 import type { JsonStateStore } from "../runtime/state.ts";
 import type { RuntimeStatusTracker } from "../runtime/status.ts";
 import { formatUnknownError } from "../types.ts";
+import { escapeHtml } from "./telegram.ts";
 
 const TelegramUpdateSchema = z.object({
   update_id: z.number().int(),
@@ -40,6 +41,9 @@ export async function runTelegramCommandLoop(options: TelegramCommandLoopOptions
   const fetcher = options.fetcher ?? fetch;
   let offset = 0;
   let failures = 0;
+  await registerCommands(fetcher, options.env.botToken).catch((error: unknown) => {
+    console.error(`Telegram setMyCommands failed: ${formatUnknownError(error)}`);
+  });
   while (!options.abortSignal.aborted) {
     try {
       const updates = await getUpdates(fetcher, options.env.botToken, offset, options.abortSignal);
@@ -75,7 +79,24 @@ async function handleUpdate(
     return;
   }
   if (command === "/help") {
-    await sendTelegramMessage(fetcher, options.env, "Commands:\n/status - show Portent runtime health");
+    await sendTelegramMessage(fetcher, options.env, "<b>Commands</b>\n/status: signal health and budgets");
+  }
+}
+
+async function registerCommands(fetcher: Fetcher, token: string): Promise<void> {
+  const url = `https://api.telegram.org/bot${token}/setMyCommands`;
+  const response = await fetchJson(fetcher, url, TelegramSendSchema, {
+    method: "POST",
+    body: {
+      commands: [
+        { command: "status", description: "Signal health and budgets" },
+        { command: "help", description: "List commands" },
+      ],
+    },
+    timeoutMs: 10_000,
+  });
+  if (!response.ok) {
+    throw new Error("Telegram setMyCommands returned ok=false.");
   }
 }
 
@@ -114,6 +135,7 @@ async function sendTelegramMessage(
     body: {
       chat_id: env.chatId,
       text,
+      parse_mode: "HTML",
       disable_web_page_preview: true,
     },
   });
@@ -132,37 +154,31 @@ function formatStatus(options: TelegramCommandLoopOptions): string {
   const snapshot = options.status.snapshot();
   const uptimeMs = snapshot.now.getTime() - snapshot.startedAt.getTime();
   const lines = [
-    "Portent status",
-    `uptime: ${formatDuration(uptimeMs)}`,
-    `manifests: ${snapshot.enabledManifestIds.length}/${snapshot.manifestCount} enabled`,
+    "<b>📊 Portent status</b>",
+    `Up ${formatDuration(uptimeMs)} · ${snapshot.enabledManifestIds.length} of ${snapshot.manifestCount} manifests enabled`,
   ];
-
-  if (snapshot.enabledManifestIds.length > 0) {
-    lines.push(`enabled: ${snapshot.enabledManifestIds.join(", ")}`);
-  }
 
   const budgets = options.state.budgetSummaries(options.manifests);
   if (budgets.length > 0) {
-    lines.push("");
-    lines.push("budgets:");
+    lines.push("", "<b>Budgets</b>");
     for (const budget of budgets) {
-      lines.push(`- ${budget.group}: ${formatUsd(budget.spentUsd)} spent, ${formatUsd(budget.pendingUsd)} pending, ${formatUsd(budget.remainingUsd)} left / ${formatUsd(budget.limitUsd)}`);
+      lines.push(escapeHtml(`• ${budget.group}: ${formatUsd(budget.spentUsd)} of ${formatUsd(budget.limitUsd)} spent, ${formatUsd(budget.remainingUsd)} left`)
+        + (budget.pendingUsd > 0 ? escapeHtml(`, ${formatUsd(budget.pendingUsd)} pending`) : ""));
     }
   }
 
-  lines.push("");
-  lines.push("signal groups:");
+  lines.push("", "<b>Signals</b>");
   if (snapshot.groups.length === 0) {
-    lines.push("- none started");
-  } else {
-    for (const group of snapshot.groups) {
-      lines.push(`- ${group.label}`);
-      lines.push(`  manifests: ${group.manifestIds.join(", ")}`);
-      lines.push(`  last event: ${group.lastEventAt ? `${formatAge(group.lastEventAt, snapshot.now)} ago (${group.lastEventId ?? "unknown"})` : "none"}`);
-      lines.push(`  last match: ${group.lastMatchedAt ? `${formatAge(group.lastMatchedAt, snapshot.now)} ago` : "none"}`);
-      if (group.lastErrorAt) {
-        lines.push(`  last error: ${formatAge(group.lastErrorAt, snapshot.now)} ago - ${group.lastError ?? "unknown"}`);
-      }
+    lines.push("None running.");
+  }
+  for (const group of snapshot.groups) {
+    const failing = group.lastErrorAt !== undefined && (group.lastEventAt === undefined || group.lastErrorAt > group.lastEventAt);
+    lines.push(escapeHtml(`${failing ? "⚠️" : "✅"} ${group.label} (${group.manifestIds.join(", ")})`));
+    const event = group.lastEventAt ? `${formatAge(group.lastEventAt, snapshot.now)} ago` : "none";
+    const match = group.lastMatchedAt ? `${formatAge(group.lastMatchedAt, snapshot.now)} ago` : "none";
+    lines.push(escapeHtml(`   Last event ${event} · last match ${match}`));
+    if (failing && group.lastErrorAt) {
+      lines.push(escapeHtml(`   Error ${formatAge(group.lastErrorAt, snapshot.now)} ago: ${group.lastError ?? "unknown"}`));
     }
   }
 

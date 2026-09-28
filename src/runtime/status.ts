@@ -36,14 +36,14 @@ export class RuntimeStatusTracker {
       .sort((left, right) => left.localeCompare(right));
   }
 
-  public groupStarted(key: string, manifests: readonly Manifest[], signalType: string, conditionType: string): void {
+  public groupStarted(key: string, manifests: readonly Manifest[], signalType: string): void {
     const existing = this.groups.get(key);
     this.groups.set(key, {
       ...(existing ?? {
         key,
         startedAt: new Date(),
       }),
-      label: `${signalType} / ${conditionType}`,
+      label: signalType,
       manifestIds: manifests.map((manifest) => String(manifest.id)).sort((left, right) => left.localeCompare(right)),
     });
   }
