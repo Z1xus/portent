@@ -103,35 +103,19 @@ export class JsonStateStore implements SignalState {
     if (!manifest.repeat && manifest.order.once && this.pendingManifestExecutions.has(pendingKey)) {
       return rejectedReservation("manifest order.once already reserved");
     }
-    this.pendingManifestExecutions.add(pendingKey);
     const budget = manifest.budget;
-    if (!budget) {
-      return {
-        allowed: true,
-        reason: "allowed",
-        commit: async (submission, commitNow) => {
-          try {
-            await this.recordExecution(manifest, event, submission, commitNow);
-          } finally {
-            this.pendingManifestExecutions.delete(pendingKey);
-          }
-        },
-        release: () => {
-          this.pendingManifestExecutions.delete(pendingKey);
-        },
-      };
+    if (budget) {
+      const spentUsd = this.spentBudgetUsd(budget.group);
+      const pendingUsd = this.pendingBudgetUsd.get(budget.group) ?? 0;
+      if (spentUsd + pendingUsd + manifest.order.amountUsd > budget.limitUsd) {
+        return rejectedReservation(
+          `budget '${budget.group}' exhausted: ${formatUsd(spentUsd + pendingUsd)} reserved/spent of ${formatUsd(budget.limitUsd)}`,
+        );
+      }
+      this.pendingBudgetUsd.set(budget.group, pendingUsd + manifest.order.amountUsd);
     }
+    this.pendingManifestExecutions.add(pendingKey);
 
-    const spentUsd = this.spentBudgetUsd(budget.group);
-    const pendingUsd = this.pendingBudgetUsd.get(budget.group) ?? 0;
-    const nextUsd = spentUsd + pendingUsd + manifest.order.amountUsd;
-    if (nextUsd > budget.limitUsd) {
-      return rejectedReservation(
-        `budget '${budget.group}' exhausted: ${formatUsd(spentUsd + pendingUsd)} reserved/spent of ${formatUsd(budget.limitUsd)}`,
-      );
-    }
-
-    this.pendingBudgetUsd.set(budget.group, pendingUsd + manifest.order.amountUsd);
     let active = true;
     const release = (): void => {
       if (!active) {
@@ -139,10 +123,12 @@ export class JsonStateStore implements SignalState {
       }
       active = false;
       this.pendingManifestExecutions.delete(pendingKey);
-      this.pendingBudgetUsd.set(
-        budget.group,
-        Math.max(0, (this.pendingBudgetUsd.get(budget.group) ?? 0) - manifest.order.amountUsd),
-      );
+      if (budget) {
+        this.pendingBudgetUsd.set(
+          budget.group,
+          Math.max(0, (this.pendingBudgetUsd.get(budget.group) ?? 0) - manifest.order.amountUsd),
+        );
+      }
     };
     return {
       allowed: true,
@@ -258,7 +244,8 @@ function formatUsd(value: number): string {
 }
 
 function latestRecord(records: readonly ExecutionRecord[]): ExecutionRecord | undefined {
-  return records
-    .slice()
-    .sort((left, right) => right.executedAt.localeCompare(left.executedAt))[0];
+  return records.reduce<ExecutionRecord | undefined>(
+    (latest, record) => latest === undefined || record.executedAt > latest.executedAt ? record : latest,
+    undefined,
+  );
 }
