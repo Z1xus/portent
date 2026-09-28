@@ -13,10 +13,11 @@ import {
   MarketClosedError,
   type MarketTarget,
 } from "../markets/polymarket.ts";
+import { QueuedNotifier } from "../notifications/queue.ts";
 import type { Notifier } from "../notifications/telegram.ts";
 import { setLongTimeout, sleep, type LongTimeout } from "../sleep.ts";
 import { streamSignal, type SignalContext, type SignalEvent } from "../signals/index.ts";
-import { OrderSkippedError, type TradingClient } from "../trading/polymarket.ts";
+import { OrderSkippedError, type OrderSubmission, type TradingClient } from "../trading/polymarket.ts";
 import { formatUnknownError } from "../types.ts";
 import { RuntimeNotificationThrottle } from "./notification-throttle.ts";
 import type { JsonStateStore } from "./state.ts";
@@ -37,20 +38,27 @@ export interface RuntimeOptions {
 
 export async function runRuntime(options: RuntimeOptions): Promise<void> {
   const enabled = options.manifests.filter((manifest) => manifest.enabled);
+  const notifier = new QueuedNotifier(options.notifier);
   const runtimeOptions = {
     ...options,
+    notifier,
     notificationThrottle: options.notificationThrottle ?? new RuntimeNotificationThrottle(),
   };
   options.status?.setManifests(options.manifests);
-  await safeNotify(runtimeOptions.notifier, { type: "startup", manifestCount: options.manifests.length, enabledCount: enabled.length });
-  for (const manifest of runtimeOptions.manifests) {
-    await safeNotify(runtimeOptions.notifier, { type: manifest.enabled ? "manifestArmed" : "manifestDisabled", manifest });
+  try {
+    await safeNotify(notifier, { type: "startup", manifestCount: options.manifests.length, enabledCount: enabled.length });
+    for (const manifest of runtimeOptions.manifests) {
+      await safeNotify(notifier, { type: manifest.enabled ? "manifestArmed" : "manifestDisabled", manifest });
+    }
+    const tasks = [
+      ...groupManifestsBySignal(enabled).map((group) => runManifestGroup(group, runtimeOptions)),
+      runHeartbeat(runtimeOptions),
+      ...(options.marketResolver.cacheTtlMs > 0 ? [runMarketRefresh(enabled, runtimeOptions)] : []),
+    ];
+    await Promise.all(tasks);
+  } finally {
+    await notifier.drain();
   }
-  const tasks = [
-    ...groupManifestsBySignal(enabled).map((group) => runManifestGroup(group, runtimeOptions)),
-    runHeartbeat(runtimeOptions),
-  ];
-  await Promise.all(tasks);
 }
 
 interface ManifestGroup {
@@ -80,6 +88,7 @@ function groupManifestsBySignal(manifests: readonly Manifest[]): readonly Manife
 }
 
 async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): Promise<void> {
+  let failures = 0;
   while (!options.abortSignal.aborted) {
     let scopedAbort: ScopedAbort | undefined;
     try {
@@ -103,19 +112,31 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
         if (scopedAbort.signal.aborted || options.abortSignal.aborted) {
           return;
         }
+        failures = 0;
         options.status?.signalEvent(group.key, event);
         await handleGroupSignalEvent(group, timing.activeManifests, event, options);
       }
+      await sleep(1_000, options.abortSignal);
     } catch (error) {
       if (!options.abortSignal.aborted) {
+        failures += 1;
         options.status?.groupError(group.key, error);
         await safeNotifyRecoverableError(options, group, error);
-        await sleep(15_000, options.abortSignal);
+        await sleep(retryDelayMs(failures), options.abortSignal);
       }
     } finally {
       scopedAbort?.dispose();
     }
   }
+}
+
+function retryDelayMs(failures: number): number {
+  return Math.min(1_000 * 2 ** Math.max(0, failures - 1), 15_000);
+}
+
+interface MatchedManifest {
+  readonly manifest: Manifest;
+  readonly reason: string;
 }
 
 async function handleGroupSignalEvent(
@@ -124,17 +145,34 @@ async function handleGroupSignalEvent(
   event: SignalEvent,
   options: RuntimeOptions,
 ): Promise<void> {
-  let matched = false;
+  const lanes = new Map<string, MatchedManifest[]>();
   for (const manifest of orderedManifests(manifests)) {
     const condition = evaluateCondition(manifest.condition, event);
     if (!condition.matched) {
       continue;
     }
-    matched = true;
-    await handleMatchedManifest(manifest, event, options, condition.reason);
+    const laneKey = manifest.budget ? `budget:${manifest.budget.group}` : `manifest:${manifest.id}`;
+    const lane = lanes.get(laneKey);
+    const matched = { manifest, reason: condition.reason };
+    if (lane) {
+      lane.push(matched);
+    } else {
+      lanes.set(laneKey, [matched]);
+    }
   }
-  if (matched) {
-    options.status?.conditionMatched(group.key);
+  if (lanes.size === 0) {
+    return;
+  }
+  options.status?.conditionMatched(group.key);
+  const results = await Promise.allSettled(Array.from(lanes.values(), async (lane) => {
+    for (const { manifest, reason } of lane) {
+      await handleMatchedManifest(manifest, event, options, reason);
+    }
+  }));
+  for (const result of results) {
+    if (result.status === "rejected") {
+      throw result.reason;
+    }
   }
 }
 
@@ -178,14 +216,13 @@ async function handleMatchedManifest(
     return;
   }
 
+  let submission: OrderSubmission;
   try {
     const shouldNotifyAttempt = options.notificationThrottle?.wouldNotifyOrderIssue(manifest) ?? true;
     if (shouldNotifyAttempt) {
       await safeNotify(options.notifier, { type: "conditionMatched", manifest, reason: conditionReason });
     }
-    const submission = await options.trading.submitOrder(manifest, target, event);
-    await reservation.commit(submission);
-    await safeNotify(options.notifier, { type: "orderSubmitted", manifest, submission });
+    submission = await options.trading.submitOrder(manifest, target, event);
   } catch (error) {
     reservation.release();
     if (error instanceof OrderSkippedError) {
@@ -193,7 +230,19 @@ async function handleMatchedManifest(
     } else {
       await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     }
+    return;
   }
+
+  try {
+    await reservation.commit(submission);
+  } catch (error) {
+    await safeNotify(options.notifier, {
+      type: "recoverableError",
+      manifest,
+      error: new Error(`Order ${submission.orderId ?? "unknown"} was placed but could not be saved to state: ${formatUnknownError(error)}`),
+    });
+  }
+  await safeNotify(options.notifier, { type: "orderSubmitted", manifest, submission });
 }
 
 function shouldNotifySkippedReservation(reason: string): boolean {
@@ -220,34 +269,38 @@ async function resolveGroupTiming(
   manifests: readonly Manifest[],
   options: RuntimeOptions,
 ): Promise<{ readonly activeManifests: readonly Manifest[]; readonly startAt?: Date; readonly stopAt?: Date }> {
-  const active: Manifest[] = [];
-  const startDates: Date[] = [];
-  const stopDates: Date[] = [];
-  for (const manifest of manifests) {
-    let targets: readonly MarketTarget[];
+  const resolved = await Promise.all(manifests.map(async (manifest) => {
     try {
-      targets = await options.marketResolver.resolveAll(manifest);
+      return { manifest, targets: await options.marketResolver.resolveAll(manifest) };
     } catch (error) {
       if (error instanceof MarketClosedError) {
         await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
-        continue;
+      } else {
+        await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
       }
-      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
+      return undefined;
+    }
+  }));
+  const active: Manifest[] = [];
+  const startDates: Date[] = [];
+  const stopDates: Date[] = [];
+  for (const item of resolved) {
+    if (!item) {
       continue;
     }
-    const stopAt = effectiveMarketStopAt(targets);
+    const stopAt = effectiveMarketStopAt(item.targets);
     if (isPastMarketStop(stopAt)) {
-      await safeNotify(options.notifier, { type: "manifestExpired", manifest, stopAt });
+      await safeNotify(options.notifier, { type: "manifestExpired", manifest: item.manifest, stopAt });
       continue;
     }
-    const startAt = effectiveMarketStartAt(targets);
+    const startAt = effectiveMarketStartAt(item.targets);
     if (startAt) {
       startDates.push(startAt);
     }
     if (stopAt) {
       stopDates.push(stopAt);
     }
-    active.push(manifest);
+    active.push(item.manifest);
   }
   return {
     activeManifests: active,
@@ -321,6 +374,18 @@ async function runHeartbeat(options: RuntimeOptions): Promise<void> {
     } catch (error) {
       await safeNotifyRecoverableError(options, { key: "heartbeat", manifests: options.manifests }, error);
     }
+  }
+}
+
+async function runMarketRefresh(manifests: readonly Manifest[], options: RuntimeOptions): Promise<void> {
+  const intervalMs = Math.max(1_000, Math.floor(options.marketResolver.cacheTtlMs / 3));
+  while (!options.abortSignal.aborted) {
+    await options.marketResolver.refresh(manifests);
+    await Promise.allSettled(manifests.map(async (manifest) => {
+      const targets = await options.marketResolver.resolveAll(manifest);
+      await Promise.all(targets.map((target) => options.trading.warm?.(target)));
+    }));
+    await sleep(intervalMs, options.abortSignal);
   }
 }
 

@@ -72,6 +72,9 @@ Do not add a database, queue, scheduler, plugin system, or strategy engine unles
 `src/notifications/telegram.ts`
 : Console/Telegram notification formatting and delivery.
 
+`src/notifications/queue.ts`
+: `QueuedNotifier`. Delivers notifications in order off the order path. The runtime wraps its notifier in it and drains it on shutdown. Never await Telegram before submitting an order.
+
 `src/notifications/telegram-commands.ts`
 : Telegram slash commands. Keep this read-only unless the user explicitly asks for remote control.
 
@@ -111,7 +114,7 @@ The core path is in `src/runtime/runner.ts`.
 5. Create a scoped abort that ends the group when all known targets reach cutoff.
 6. Stream or poll one signal for the group.
 7. Evaluate each manifest's own condition once per signal event.
-8. For each matched manifest in budget priority order:
+8. Matched manifests in the same `budget.group` run one after another in priority order. Manifests without a budget run in parallel. For each matched manifest:
    - reserve execution in `JsonStateStore`
    - resolve fresh markets
    - skip expired/not-started targets
@@ -119,6 +122,8 @@ The core path is in `src/runtime/runner.ts`.
    - notify `conditionMatched`
    - submit one order
    - commit execution
+
+`GammaMarketResolver` caches Gamma markets for `cacheTtlMs` and a background loop in the runtime refreshes them and warms CLOB tick size and neg-risk data, so the order path avoids network round trips. Only successful lookups are cached. A commit failure after a placed order is reported as a recoverable error and never releases the reservation.
 
 `conditionMatched` should not fire on every polling match. It should fire only when the manifest is past dedupe/budget/timing checks and is about to submit.
 

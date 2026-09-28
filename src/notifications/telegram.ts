@@ -63,6 +63,8 @@ export class TelegramNotifier implements Notifier {
         text: formatNotification(event),
         disable_web_page_preview: true,
       },
+      timeoutMs: 10_000,
+      retry: { attempts: 3, backoffMs: 500, maxBackoffMs: 4_000 },
     });
     if (!response.ok) {
       throw new Error("Telegram sendMessage returned ok=false.");

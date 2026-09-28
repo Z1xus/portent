@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   ]);
   const status = new RuntimeStatusTracker();
   const trading = await createPolymarketTradingClient(env);
-  const marketResolver = new GammaMarketResolver({ fetcher: fetch });
+  const marketResolver = new GammaMarketResolver({ fetcher: fetch, cacheTtlMs: 30_000 });
 
   try {
     await Promise.all([

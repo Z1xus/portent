@@ -20,6 +20,7 @@ const RuntimeEnvBaseSchema = z.object({
   POLYMARKET_API_KEY: OptionalNonEmptyString,
   POLYMARKET_API_SECRET: OptionalNonEmptyString,
   POLYMARKET_API_PASSPHRASE: OptionalNonEmptyString,
+  POLYMARKET_API_NONCE: z.coerce.number().int().nonnegative().optional(),
   POLYMARKET_FUNDER_ADDRESS: z.string().min(1),
   POLYMARKET_SIGNATURE_TYPE: WalletSignatureTypeSchema.default("POLY_PROXY"),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
@@ -61,6 +62,7 @@ export interface RuntimeEnv {
     readonly apiKey?: string;
     readonly apiSecret?: string;
     readonly apiPassphrase?: string;
+    readonly apiKeyNonce?: number;
     readonly funderAddress: HexAddress;
     readonly signatureType: WalletSignatureType;
   };
@@ -95,6 +97,7 @@ export interface OptionalRuntimeEnv {
     readonly apiKey?: string;
     readonly apiSecret?: string;
     readonly apiPassphrase?: string;
+    readonly apiKeyNonce?: number;
     readonly funderAddress?: HexAddress;
     readonly signatureType: WalletSignatureType;
   };
@@ -144,6 +147,7 @@ export function parseRuntimeEnv(raw: Record<string, string | undefined>): Runtim
       ...(parsed.POLYMARKET_API_KEY ? { apiKey: parsed.POLYMARKET_API_KEY } : {}),
       ...(parsed.POLYMARKET_API_SECRET ? { apiSecret: parsed.POLYMARKET_API_SECRET } : {}),
       ...(parsed.POLYMARKET_API_PASSPHRASE ? { apiPassphrase: parsed.POLYMARKET_API_PASSPHRASE } : {}),
+      ...(parsed.POLYMARKET_API_NONCE !== undefined ? { apiKeyNonce: parsed.POLYMARKET_API_NONCE } : {}),
       funderAddress: asHexAddress(parsed.POLYMARKET_FUNDER_ADDRESS),
       signatureType: parsed.POLYMARKET_SIGNATURE_TYPE,
     },
@@ -175,6 +179,7 @@ export function parseOptionalRuntimeEnv(raw: Record<string, string | undefined>)
     ...(parsed.POLYMARKET_API_KEY ? { apiKey: parsed.POLYMARKET_API_KEY } : {}),
     ...(parsed.POLYMARKET_API_SECRET ? { apiSecret: parsed.POLYMARKET_API_SECRET } : {}),
     ...(parsed.POLYMARKET_API_PASSPHRASE ? { apiPassphrase: parsed.POLYMARKET_API_PASSPHRASE } : {}),
+    ...(parsed.POLYMARKET_API_NONCE !== undefined ? { apiKeyNonce: parsed.POLYMARKET_API_NONCE } : {}),
     ...(parsed.POLYMARKET_FUNDER_ADDRESS ? { funderAddress: asHexAddress(parsed.POLYMARKET_FUNDER_ADDRESS) } : {}),
   };
   return {

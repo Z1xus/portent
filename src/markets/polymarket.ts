@@ -22,7 +22,18 @@ export interface MarketTarget {
 export interface GammaMarketResolverOptions {
   readonly fetcher: Fetcher;
   readonly gammaBaseUrl?: string;
+  readonly cacheTtlMs?: number;
 }
+
+interface CachedMarket {
+  readonly market: GammaMarket;
+  readonly fetchedAt: number;
+}
+
+const GAMMA_REQUEST = {
+  timeoutMs: 10_000,
+  retry: { attempts: 3, backoffMs: 250, maxBackoffMs: 2_000 },
+} as const;
 
 const GammaTokenSchema = z.object({
   token_id: z.string().optional(),
@@ -71,9 +82,13 @@ export class MarketClosedError extends Error {
 export class GammaMarketResolver {
   private readonly fetcher: Fetcher;
   private readonly gammaBaseUrl: string;
+  private readonly cache = new Map<string, CachedMarket>();
+  private readonly inflight = new Map<string, Promise<GammaMarket>>();
+  public readonly cacheTtlMs: number;
 
   public constructor(options: GammaMarketResolverOptions) {
     this.fetcher = options.fetcher;
+    this.cacheTtlMs = options.cacheTtlMs ?? 0;
     this.gammaBaseUrl = (options.gammaBaseUrl ?? "https://gamma-api.polymarket.com").replace(/\/+$/u, "");
   }
 
@@ -90,17 +105,46 @@ export class GammaMarketResolver {
     return Promise.all(manifestMarkets(manifest).map((market) => this.resolveOne(market)));
   }
 
+  public async refresh(manifests: readonly Manifest[]): Promise<void> {
+    const urls = new Set(manifests.flatMap((manifest) => manifestMarkets(manifest).map((market) => market.url)));
+    await Promise.allSettled(Array.from(urls, (url) => this.loadMarket(parsePolymarketUrl(url), true)));
+  }
+
   private async resolveOne(manifestMarket: ManifestMarket): Promise<MarketTarget> {
     const slugParts = parsePolymarketUrl(manifestMarket.url);
-    const market = await this.fetchMarket(slugParts);
+    const market = await this.loadMarket(slugParts, false);
     assertTradableMarket(market, slugParts.marketSlug);
     return resolveOutcome(market, slugParts.marketSlug, manifestMarket);
+  }
+
+  private loadMarket(slugParts: MarketSlugParts, forceFetch: boolean): Promise<GammaMarket> {
+    const key = `${slugParts.eventSlug ?? ""}/${slugParts.marketSlug}`;
+    const cached = this.cache.get(key);
+    if (!forceFetch && cached && Date.now() - cached.fetchedAt < this.cacheTtlMs) {
+      return Promise.resolve(cached.market);
+    }
+    const pending = this.inflight.get(key);
+    if (pending) {
+      return pending;
+    }
+    const request = this.fetchMarket(slugParts)
+      .then((market) => {
+        if (this.cacheTtlMs > 0) {
+          this.cache.set(key, { market, fetchedAt: Date.now() });
+        }
+        return market;
+      })
+      .finally(() => {
+        this.inflight.delete(key);
+      });
+    this.inflight.set(key, request);
+    return request;
   }
 
   private async fetchMarket(slugParts: MarketSlugParts): Promise<GammaMarket> {
     const marketUrl = new URL(`${this.gammaBaseUrl}/markets`);
     marketUrl.searchParams.set("slug", slugParts.marketSlug);
-    const markets = await fetchJson(this.fetcher, marketUrl.toString(), GammaMarketsSchema);
+    const markets = await fetchJson(this.fetcher, marketUrl.toString(), GammaMarketsSchema, GAMMA_REQUEST);
     const directMarket = markets.find((market) => market.slug === slugParts.marketSlug) ?? markets[0];
     if (directMarket) {
       return directMarket;
@@ -112,7 +156,7 @@ export class GammaMarketResolver {
 
     const eventUrl = new URL(`${this.gammaBaseUrl}/events`);
     eventUrl.searchParams.set("slug", slugParts.eventSlug);
-    const events = await fetchJson(this.fetcher, eventUrl.toString(), GammaEventsSchema);
+    const events = await fetchJson(this.fetcher, eventUrl.toString(), GammaEventsSchema, GAMMA_REQUEST);
     const eventMarkets = events.flatMap((event) => event.markets ?? []);
     const eventMarket = eventMarkets.find((market) => market.slug === slugParts.marketSlug);
     if (!eventMarket) {

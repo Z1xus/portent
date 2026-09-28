@@ -28,7 +28,9 @@ const client = new ClobClient({
   throwOnError: true,
 });
 
-const creds = await deriveOrCreateApiKeyCreds(client);
+const apiNonceRaw = raw["POLYMARKET_API_NONCE"];
+const apiNonce = apiNonceRaw === undefined ? undefined : Number(apiNonceRaw);
+const creds = await deriveOrCreateApiKeyCreds(client, apiNonce);
 console.log(`POLYMARKET_API_KEY=${creds.key}`);
 console.log(`POLYMARKET_API_SECRET=${creds.secret}`);
 console.log(`POLYMARKET_API_PASSPHRASE=${creds.passphrase}`);

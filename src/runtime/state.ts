@@ -48,6 +48,8 @@ export class JsonStateStore implements SignalState {
   private data: StateData = { executions: [], lastSeen: {} };
   private readonly pendingBudgetUsd = new Map<string, number>();
   private readonly pendingManifestExecutions = new Set<string>();
+  private queuedWrite: Promise<void> | undefined;
+  private lastWrite: Promise<void> = Promise.resolve();
 
   public constructor(private readonly dir: string) {
     this.statePath = join(dir, "state.json");
@@ -64,6 +66,9 @@ export class JsonStateStore implements SignalState {
   }
 
   public async setLastSeen(key: string, value: string): Promise<void> {
+    if (this.data.lastSeen[key] === value) {
+      return;
+    }
     this.data.lastSeen[key] = value;
     await this.writeState();
   }
@@ -213,7 +218,20 @@ export class JsonStateStore implements SignalState {
     }
   }
 
-  private async writeState(): Promise<void> {
+  private writeState(): Promise<void> {
+    if (this.queuedWrite) {
+      return this.queuedWrite;
+    }
+    const write = this.lastWrite.then(() => {
+      this.queuedWrite = undefined;
+      return this.flushState();
+    });
+    this.queuedWrite = write;
+    this.lastWrite = write.catch(() => {});
+    return write;
+  }
+
+  private async flushState(): Promise<void> {
     const tmpPath = `${this.statePath}.tmp`;
     await writeFile(tmpPath, `${JSON.stringify(this.data, null, 2)}\n`);
     await rename(tmpPath, this.statePath);

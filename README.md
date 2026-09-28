@@ -34,6 +34,8 @@ POLYMARKET_SIGNATURE_TYPE=POLY_PROXY
 POLYMARKET_API_KEY=
 POLYMARKET_API_SECRET=
 POLYMARKET_API_PASSPHRASE=
+# Optional. Nonce for derived credentials. Use a non-zero value when another bot shares the wallet.
+POLYMARKET_API_NONCE=
 
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...

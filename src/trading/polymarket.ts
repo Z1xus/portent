@@ -21,6 +21,7 @@ export interface TradingClient {
   resolvePreflight(target: MarketTarget, manifest: Manifest): Promise<OrderPreflight>;
   submitOrder(manifest: Manifest, target: MarketTarget, event: SignalEvent): Promise<OrderSubmission>;
   heartbeat(): Promise<void>;
+  warm?(target: MarketTarget): Promise<void>;
 }
 
 export interface OrderPreflight {
@@ -103,17 +104,18 @@ export async function resolveApiKeyCreds(
   if (env.polymarket.apiKey || env.polymarket.apiSecret || env.polymarket.apiPassphrase) {
     throw new Error("Provide all CLOB API credential fields, or leave all three empty so Portent derives them on startup.");
   }
-  return deriveOrCreateApiKeyCreds(client);
+  return deriveOrCreateApiKeyCreds(client, env.polymarket.apiKeyNonce);
 }
 
 export async function deriveOrCreateApiKeyCreds(
   client: Pick<ClobClient, "createApiKey" | "deriveApiKey">,
+  nonce?: number,
 ): Promise<ApiKeyCreds> {
   try {
-    return await client.deriveApiKey();
+    return await client.deriveApiKey(nonce);
   } catch (deriveError) {
     try {
-      return await client.createApiKey();
+      return await client.createApiKey(nonce);
     } catch (createError) {
       throw new Error(
         `Could not derive or create Polymarket CLOB API credentials. derive failed: ${formatAuthError(deriveError)}; create failed: ${formatAuthError(createError)}`,
@@ -126,17 +128,26 @@ export class PolymarketTradingClient implements TradingClient {
   public constructor(private readonly client: ClobClient) {}
 
   public async resolvePreflight(target: MarketTarget, manifest: Manifest): Promise<OrderPreflight> {
-    const [tickSize, negRisk] = await Promise.all([
+    const [tickSize, negRisk, book] = await Promise.all([
       this.client.getTickSize(target.tokenId),
       this.client.getNegRisk(target.tokenId),
+      this.client.getOrderBook(target.tokenId),
     ]);
-    const preflight: OrderPreflight = {
+    const bestAsk = bestAskFromBook(book);
+    return {
       tokenId: target.tokenId,
       tickSize,
       negRisk,
-      ...(await this.bookMetrics(target, manifest)),
+      ...(bestAsk === undefined ? {} : { bestAsk }),
+      depthUsdAtMaxPrice: depthUsdAtOrBelow(book, manifest.order.maxPrice),
     };
-    return preflight;
+  }
+
+  public async warm(target: MarketTarget): Promise<void> {
+    await Promise.all([
+      this.client.getTickSize(target.tokenId),
+      this.client.getNegRisk(target.tokenId),
+    ]);
   }
 
   public async submitOrder(manifest: Manifest, target: MarketTarget, event: SignalEvent): Promise<OrderSubmission> {
@@ -177,15 +188,6 @@ export class PolymarketTradingClient implements TradingClient {
     } catch (error) {
       return { tokenId: target.tokenId, price, size, placed, canceled: false, cancelRaw: undefined, cancelError: error };
     }
-  }
-
-  private async bookMetrics(target: MarketTarget, manifest: Manifest): Promise<{ readonly bestAsk?: number; readonly depthUsdAtMaxPrice: number }> {
-    const book = await this.client.getOrderBook(target.tokenId);
-    const bestAsk = bestAskFromBook(book);
-    return {
-      ...(bestAsk === undefined ? {} : { bestAsk }),
-      depthUsdAtMaxPrice: depthUsdAtOrBelow(book, manifest.order.maxPrice),
-    };
   }
 
   private async postOrder(
