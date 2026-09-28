@@ -89,12 +89,14 @@ function groupManifestsBySignal(manifests: readonly Manifest[]): readonly Manife
 
 async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): Promise<void> {
   let failures = 0;
+  let manifests = group.manifests;
   while (!options.abortSignal.aborted) {
     let scopedAbort: ScopedAbort | undefined;
     try {
-      options.status?.groupStarted(group.key, group.manifests, group.signal.type, `${conditionCount(group.manifests)} condition(s)`);
-      const timing = await resolveGroupTiming(group.manifests, options);
-      if (timing.activeManifests.length === 0) {
+      options.status?.groupStarted(group.key, manifests, group.signal.type, `${conditionCount(manifests)} condition(s)`);
+      const timing = await resolveGroupTiming(manifests, options);
+      manifests = timing.activeManifests;
+      if (manifests.length === 0) {
         return;
       }
       if (isBeforeMarketStart(timing.startAt)) {
@@ -275,10 +277,10 @@ async function resolveGroupTiming(
     } catch (error) {
       if (error instanceof MarketClosedError) {
         await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
-      } else {
-        await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
+        return undefined;
       }
-      return undefined;
+      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
+      return { manifest, targets: [] };
     }
   }));
   const active: Manifest[] = [];
@@ -370,9 +372,23 @@ async function runHeartbeat(options: RuntimeOptions): Promise<void> {
       return;
     }
     try {
-      await options.trading.heartbeat();
+      await heartbeatWithRetry(options);
     } catch (error) {
       await safeNotifyRecoverableError(options, { key: "heartbeat", manifests: options.manifests }, error);
+    }
+  }
+}
+
+async function heartbeatWithRetry(options: RuntimeOptions): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await options.trading.heartbeat();
+      return;
+    } catch (error) {
+      if (attempt >= 3 || options.abortSignal.aborted) {
+        throw error;
+      }
+      await sleep(attempt * 1_000, options.abortSignal);
     }
   }
 }
