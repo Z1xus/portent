@@ -22,5 +22,5 @@
     "noPropertyAccessFromIndexSignature": true,
     "useUnknownInCatchVariables": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "index.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
 }

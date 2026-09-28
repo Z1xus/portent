@@ -95,9 +95,9 @@ async function runManifestGroup(group: ManifestGroup, options: RuntimeOptions): 
       manifests = timing.activeManifests;
       if (manifests.length === 0) {
         await safeNotify(options.notifier, {
-          type: "recoverableError",
-          title: `${group.signal.type} signal stopped`,
-          error: new Error(`No active manifests left: ${group.manifests.map((manifest) => manifest.id).join(", ")}.`),
+          type: "signalStopped",
+          signalType: group.signal.type,
+          manifestIds: group.manifests.map((manifest) => String(manifest.id)),
         });
         return;
       }

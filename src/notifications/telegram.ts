@@ -9,6 +9,7 @@ import { formatUnknownError } from "../types.ts";
 export type NotificationEvent =
   | { readonly type: "startup"; readonly manifests: readonly Manifest[] }
   | { readonly type: "preflight" }
+  | { readonly type: "signalStopped"; readonly signalType: string; readonly manifestIds: readonly string[] }
   | { readonly type: "manifestEnded"; readonly manifest: Manifest; readonly stopAt?: Date; readonly reason?: string }
   | { readonly type: "conditionMatched"; readonly manifest: Manifest; readonly reason: string }
   | { readonly type: "orderSubmitted"; readonly manifest: Manifest; readonly target: MarketTarget; readonly submission: OrderSubmission }
@@ -94,6 +95,8 @@ export function formatNotification(event: NotificationEvent): FormattedNotificat
       return formatStartup(event.manifests);
     case "preflight":
       return loud("✅ Telegram alerts work", ["This is a Portent preflight test."]);
+    case "signalStopped":
+      return silent(`⏹ ${event.signalType} signal stopped`, [`All its manifests ended: ${event.manifestIds.join(", ")}.`]);
     case "manifestEnded":
       return silent(`⏹ ${event.manifest.id} ended`, [
         event.reason ?? (event.stopAt ? `Market window closed at ${formatTime(event.stopAt)}.` : "Market closed."),

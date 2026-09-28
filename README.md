@@ -161,7 +161,7 @@ Once running, the Telegram bot listens for `/status` and `/help` from `TELEGRAM_
 
 ### Notifications
 
-Routine messages arrive silently: the startup summary, condition matches, skipped orders, and manifests that end with their market. Placed orders, failed orders, runtime errors, and shutdowns arrive with sound.
+Routine messages arrive silently: the startup summary, condition matches, skipped orders, and manifests or signals that end with their market. Placed orders, failed orders, runtime errors, and shutdowns arrive with sound.
 
 `notifications.telegram: false` disables Telegram messages for a manifest.
 
