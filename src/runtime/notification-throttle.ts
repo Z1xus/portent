@@ -5,6 +5,16 @@ const RECOVERABLE_ERROR_KEY = "recoverableError";
 
 export class RuntimeNotificationThrottle {
   private readonly lastNotificationAt = new Map<string, number>();
+  private readonly endedManifests = new Set<string>();
+
+  public shouldNotifyManifestEnded(manifest: Manifest): boolean {
+    const id = String(manifest.id);
+    if (this.endedManifests.has(id)) {
+      return false;
+    }
+    this.endedManifests.add(id);
+    return true;
+  }
 
   public wouldNotifyOrderIssue(manifest: Manifest, now = new Date()): boolean {
     const cooldownMs = manifest.notifications.failureCooldownMs;

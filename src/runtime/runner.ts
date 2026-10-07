@@ -200,7 +200,7 @@ async function handleMatchedManifest(
     const freshStopAt = effectiveMarketStopAt(targets);
     if (isPastMarketStop(freshStopAt)) {
       reservation.release();
-      await safeNotify(options.notifier, { type: "manifestEnded", manifest, stopAt: freshStopAt });
+      await safeNotifyManifestEnded(options, { type: "manifestEnded", manifest, stopAt: freshStopAt });
       return;
     }
     const freshStartAt = effectiveMarketStartAt(targets);
@@ -213,10 +213,12 @@ async function handleMatchedManifest(
   } catch (error) {
     reservation.release();
     if (error instanceof MarketClosedError) {
-      await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
-      return;
+      await safeNotifyManifestEnded(options, { type: "manifestEnded", manifest, reason: error.message });
+    } else if (error instanceof OrderSkippedError) {
+      await safeNotifyOrderIssue(options, { type: "orderSkipped", manifest, reason: error.message });
+    } else {
+      await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     }
-    await safeNotifyOrderIssue(options, { type: "orderFailed", manifest, error });
     return;
   }
 
@@ -276,7 +278,7 @@ async function resolveGroupTiming(
       return { manifest, targets: await options.marketResolver.resolveAll(manifest) };
     } catch (error) {
       if (error instanceof MarketClosedError) {
-        await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
+        await safeNotifyManifestEnded(options, { type: "manifestEnded", manifest, reason: error.message });
         return undefined;
       }
       await safeNotifyRecoverableError(
@@ -297,7 +299,7 @@ async function resolveGroupTiming(
     }
     const stopAt = effectiveMarketStopAt(item.targets);
     if (isPastMarketStop(stopAt)) {
-      await safeNotify(options.notifier, { type: "manifestEnded", manifest: item.manifest, stopAt });
+      await safeNotifyManifestEnded(options, { type: "manifestEnded", manifest: item.manifest, stopAt });
       continue;
     }
     const startAt = effectiveMarketStartAt(item.targets);
@@ -336,13 +338,16 @@ export async function selectMarketTarget(
       const eligible = quoted
         .filter((item) => item.preflight.bestAsk !== undefined && item.preflight.bestAsk <= manifest.order.maxPrice)
         .sort((left, right) => (left.preflight.bestAsk ?? Number.POSITIVE_INFINITY) - (right.preflight.bestAsk ?? Number.POSITIVE_INFINITY));
-      return eligible[0]?.target ?? unreachableNoTarget(manifest, "No market target has bestAsk at or below maxPrice.");
+      if (!eligible[0]) {
+        throw new OrderSkippedError(`No market target has bestAsk at or below maxPrice ${manifest.order.maxPrice}.`);
+      }
+      return eligible[0].target;
     }
   }
 }
 
-function unreachableNoTarget(manifest: Manifest, reason = "No market target selected."): never {
-  throw new Error(`Manifest ${manifest.id}: ${reason}`);
+function unreachableNoTarget(manifest: Manifest): never {
+  throw new Error(`Manifest ${manifest.id}: No market target selected.`);
 }
 
 interface ScopedAbort {
@@ -401,7 +406,6 @@ async function heartbeatWithRetry(options: RuntimeOptions): Promise<void> {
 async function runMarketRefresh(manifests: readonly Manifest[], options: RuntimeOptions): Promise<void> {
   const intervalMs = Math.max(1_000, Math.floor(options.marketResolver.cacheTtlMs / 3));
   const failures = new Map<string, number>();
-  const live = new Set<string>();
   while (!options.abortSignal.aborted) {
     await options.marketResolver.refresh(manifests);
     await Promise.all(manifests.map(async (manifest) => {
@@ -409,13 +413,10 @@ async function runMarketRefresh(manifests: readonly Manifest[], options: Runtime
       try {
         const targets = await options.marketResolver.resolveAll(manifest);
         failures.delete(id);
-        live.add(id);
         await Promise.allSettled(targets.map((target) => options.trading.warm?.(target)));
       } catch (error) {
         if (error instanceof MarketClosedError) {
-          if (live.delete(id)) {
-            await safeNotify(options.notifier, { type: "manifestEnded", manifest, reason: error.message });
-          }
+          await safeNotifyManifestEnded(options, { type: "manifestEnded", manifest, reason: error.message });
           return;
         }
         const count = (failures.get(id) ?? 0) + 1;
@@ -440,6 +441,16 @@ async function safeNotify(notifier: Notifier, event: Parameters<Notifier["notify
   } catch (error) {
     console.error(`Notification failed: ${formatUnknownError(error)}`);
   }
+}
+
+async function safeNotifyManifestEnded(
+  options: Pick<RuntimeOptions, "notificationThrottle" | "notifier">,
+  event: Extract<Parameters<Notifier["notify"]>[0], { readonly type: "manifestEnded" }>,
+): Promise<void> {
+  if (options.notificationThrottle && !options.notificationThrottle.shouldNotifyManifestEnded(event.manifest)) {
+    return;
+  }
+  await safeNotify(options.notifier, event);
 }
 
 async function safeNotifyOrderIssue(

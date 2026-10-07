@@ -129,7 +129,7 @@ The core path is in `src/runtime/runner.ts`.
 
 `GammaMarketResolver` caches Gamma markets for `cacheTtlMs` and a background loop in the runtime refreshes them and warms CLOB tick size and neg-risk data, so the order path avoids network round trips. Only successful lookups are cached. A commit failure after a placed order is reported as a recoverable error and never releases the reservation.
 
-The market refresh loop also reports health. Three failed refreshes in a row for a manifest send one throttled recoverable error, and a market that closes after being live sends one silent `manifestEnded` notice. A group that ends with no active manifests sends a silent `signalStopped` notice. Only closed or expired manifests leave a group, and each one already sent its own notice.
+The market refresh loop also reports health. Three failed refreshes in a row for a manifest send one throttled recoverable error, and a closed market sends a silent `manifestEnded` notice. Every `manifestEnded` path goes through `safeNotifyManifestEnded()`, which sends one notice per manifest per process. A group that ends with no active manifests sends a silent `signalStopped` notice. Only closed or expired manifests leave a group, and each one already sent its own notice.
 
 A transient market lookup failure at group start must not disable a manifest. Only closed or expired markets drop a manifest from its group.
 
@@ -265,7 +265,7 @@ Expected high-value notifications:
 
 `formatNotification()` marks each event silent or loud. Silent events use Telegram `disable_notification`. Keep routine events silent: startup, manifest ended, signal stopped, condition matched, and skipped orders. Only real outcomes and failures should make a sound. Every `recoverableError` needs a short `title` that names what failed. Telegram messages use HTML parse mode, so pass dynamic text through `escapeHtml()`.
 
-Avoid notification spam from polling. Repeated already-executed, `order.once`, and cooldown skips should stay quiet unless the user asks for verbose diagnostics.
+Avoid notification spam from polling. A `lowestBestAsk` selection with no target at or below `maxPrice` is a silent skip, not a failure. Repeated already-executed, `order.once`, and cooldown skips should stay quiet unless the user asks for verbose diagnostics.
 
 ## Telegram Commands
 
